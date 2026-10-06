@@ -234,13 +234,13 @@ Python 3.12, uv, pandas, NumPy, scikit-learn, NetworkX, pytest, ruff, Makefile; 
 - Die Nachbarschaft ist im Generator stark homophil: Musterknoten hängen fast nur an anderen Musterknoten, und Kreise und Ketten tragen entlang der Kanten fast denselben Betrag (`hopNoiseSd` 0,02). Von den 847 Kanten zwischen zwei gelabelten Knoten verbinden 161 zwei illicit-, 666 zwei licit-Knoten und nur 20 ein gemischtes Paar; 216 von 292 illicit-Knoten haben einen illicit-Nachbarn, aber nur 19 von 2.587 licit-Knoten (`dataset.homophily` in `metrics.json`). Ein Modell mit Nachbarschaft bekommt dieses Signal teilweise geschenkt. Ein Vorsprung von GCN oder GraphSAGE in Schritt 4 wäre auf diesem Netz deshalb zum Teil eingebaut und nicht auf andere Daten übertragbar.
 - Die Labels sind knapp: im synthetischen Netz 76 % `unknown`, darunter bewusst verdeckte Musterknoten, bei Elliptic 77 %. Die Merkmale des Elliptic-Datensatzes sind anonymisiert und nicht dokumentiert.
 - Das Testset ist klein (95 illicit-Testknoten). PR-AUC-Unterschiede in der zweiten Nachkommastelle sind entsprechend unsicher: Schon zufällige Rangfolgen streuen bis 0,1420 (95-%-Quantil). Konfidenzintervalle für die Verfahren werden noch nicht berichtet.
-- Die Reproduzierbarkeit ist bisher nur unter Windows geprüft. Die CI vergleicht die eingecheckten Dateien unter Linux mit einer Neuberechnung; ihr erster Lauf steht aus.
+- Die Reproduzierbarkeit ist unter Windows und Linux geprüft: Die CI hat die eingecheckten Dateien am 06.10.2026 (PR #1) unter Linux mit einer Neuberechnung verglichen und innerhalb der Toleranz 1e-4 bestätigt. macOS ist nicht geprüft.
 - Kein Live-Scoring, kein Echtzeitbetrieb; das Projekt ist eine Methodenstudie.
 - Nur zwei GNN-Architekturen sind geplant; GAT und temporale Modelle sind Roadmap.
 
 ## Roadmap
 
-- v1: Baseline, GCN und GraphSAGE, zeitlicher Split, Export, statische Seite. Stand 06.10.2026: Schritte 1 bis 3 auf dem synthetischen Netz umgesetzt (Generator, zeitlicher Split mit Prüfung, robuste Z-Scores, Isolation Forest mit Graphmaßen, Kennzahlen, Export, Verifikation, Seite `/projects/netzradar` mit Graph-Ausschnitt, Metriktafel und PR-Kurven). Offen: GNN (Schritt 4), Case-Study (Schritt 5), lokaler Elliptic-Lauf, Datensatzentscheidung IBM-AML, Deployment.
+- v1: Baseline, GCN und GraphSAGE, zeitlicher Split, Export, statische Seite. Stand 06.10.2026: Schritte 1 bis 3 auf dem synthetischen Netz umgesetzt (Generator, zeitlicher Split mit Prüfung, robuste Z-Scores, Isolation Forest mit Graphmaßen, Kennzahlen, Export, Verifikation, Seite `/projects/netzradar` mit Graph-Ausschnitt, Metriktafel und PR-Kurven). Offen: GNN (Schritt 4, geplant), Case-Study (Schritt 5), lokaler Elliptic-Lauf, Datensatzentscheidung IBM-AML, Deployment.
 - v2: temporale GNN-Variante, GAT im Vergleich, Sampling gegen Klassengewichtung, dokumentierte Hyperparametersuche.
 - v3: vorberechnete Erklärungen der markierten Muster in verständlicher Sprache (Sprachmodell im Batch-Modus, keine Laufzeitkosten).
 

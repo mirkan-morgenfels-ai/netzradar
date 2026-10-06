@@ -5,7 +5,7 @@ Zweck: Reproduzierbare Fallstudie zur Anomalie-Erkennung in Transaktionsnetzwerk
 ## Quellen
 
 - Maßgeblich für Umfang, Methodik, Datensätze, Lizenzen, Zeitplan und Regeln ist das Umsetzungsdokument, Teil 3 „K3: NetzRadar“.
-- Das Umsetzungsdokument und `Projektanweisungen_K3_NetzRadar.md` liegen außerhalb des Repos in `AI-Projekte\AI-Projekt-3\` und werden nicht eingecheckt. Der README-Entwurf `README_K3_NetzRadar.md` ist in `README.md` aufgegangen.
+- Das Umsetzungsdokument, `Projektanweisungen_K3_NetzRadar.md` und der Plan für Schritt 4 (`Schritt-4-Plan_K3_NetzRadar.md`) liegen außerhalb des Repos in `AI-Projekte\AI-Projekt-3\` und werden nicht eingecheckt. Der README-Entwurf `README_K3_NetzRadar.md` ist in `README.md` aufgegangen.
 - Widerspricht eine Anfrage einem Dokument oder ein Dokument dem Code: hinweisen und vorschlagen, welches Dokument angepasst wird, statt still abzuweichen.
 - Bekannte Widersprüche, Stand 06.10.2026:
   - Umsetzungsdokument 3.6 nennt als Abnahme von Schritt 4 „GNN schlägt Baseline (PR-AUC)“, 3.12 „GNN schlägt Baseline messbar“. Das widerspricht Regel 5. Es gilt der Abschnitt „Abnahme Schritt 4“ unten.
@@ -101,7 +101,7 @@ Zusätzlich verbindlich:
   1. Daten laden, aufbereiten, zeitlicher Split: auf dem synthetischen Netz umgesetzt. Der Elliptic-Lader ist nur an einer erfundenen Fixture getestet. Der IBM-AML-Lader fehlt, er hängt an der Datensatzentscheidung.
   2. Baseline (robuste Z-Scores, Isolation Forest, Graphmaße): umgesetzt, Ergebnisse in `data/k3/metrics.json` und `docs/runs/`.
   3. Visualisierung und Export: umgesetzt. Export (`nodes.json`, `edges.json`, `metrics.json`) und Seite `/projects/netzradar` mit Graph-Ausschnitt, Metriktafel und PR-Kurven; Deployment offen.
-  4. GNN (GCN, GraphSAGE in PyTorch Geometric): offen.
+  4. GNN (GCN, GraphSAGE in PyTorch Geometric): offen. Plan in `AI-Projekte\AI-Projekt-3\Schritt-4-Plan_K3_NetzRadar.md`, außerhalb des Repos bei den übrigen Planungsunterlagen (Abhängigkeiten mit geprüfter Auflösung, transduktives Setup, Tests, Datenvertrag v3, Fairness der Bewertung, Aufwand, offene Entscheidungen E1 bis E10).
   5. Case-Study und Seite: offen.
 - Bei neuen Aufgaben zuerst ein kurzer Plan mit Dateien, Funktionen, Tests, Abnahmekriterium, geschätzten Stunden und Laufzeit. Kleine Änderungen direkt umsetzen.
 - Mathematik erklären, wenn sie eine Entscheidung trägt: Formeln und Mini-Beispiele sind erwünscht, Floskeln nicht.
