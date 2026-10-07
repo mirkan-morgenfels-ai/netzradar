@@ -1,11 +1,52 @@
+import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from k3_train import cli, paths
-from k3_train.cli import main
+from k3_train.cli import MISSING_GNN_MESSAGE, main
 from k3_train.paths import DATA_DIR_ENV, DEFAULT_DATA_DIR, data_root, processed_dir, raw_dir
 from k3_train.synth import SMALL_CONFIG
+
+TORCH_FREE_MODULES = (
+    "k3_train.cli",
+    "k3_train.export",
+    "k3_train.verify",
+    "k3_train.runs",
+    "k3_train.training",
+    "k3_train.gnn_results",
+    "k3_train.pipeline",
+)
+TORCH_PROBE = "\n".join(
+    (
+        "import importlib, json, sys",
+        "for name in sys.argv[1:]:",
+        "    importlib.import_module(name)",
+        "roots = ('torch', 'torch_geometric')",
+        "loaded = sorted(name for name in sys.modules if name.split('.')[0] in roots)",
+        "sys.modules['torch'] = None",
+        "sys.modules['torch_geometric'] = None",
+        "from k3_train.cli import main",
+        "status = main(['gnn'])",
+        "print(json.dumps({'loaded': loaded, 'status': status}))",
+    )
+)
+
+
+def test_core_modules_run_without_torch() -> None:
+    result = subprocess.run(
+        [sys.executable, "-c", TORCH_PROBE, *TORCH_FREE_MODULES],
+        capture_output=True,
+        check=True,
+        encoding="utf-8",
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+    )
+    report = json.loads(result.stdout.strip().splitlines()[-1])
+    assert report == {"loaded": [], "status": 2}
+    assert MISSING_GNN_MESSAGE in result.stderr
 
 
 def test_data_without_dataset_explains_options(capsys: pytest.CaptureFixture[str]) -> None:
@@ -31,6 +72,15 @@ def test_export_of_elliptic_is_refused(capsys: pytest.CaptureFixture[str]) -> No
 def test_unknown_dataset_is_rejected_by_parser() -> None:
     with pytest.raises(SystemExit):
         main(["baseline", "--dataset", "ibm"])
+    with pytest.raises(SystemExit):
+        main(["gnn", "--dataset", "ibm"])
+
+
+def test_gnn_command_is_registered() -> None:
+    args = cli.build_parser().parse_args(["gnn", "--max-epochs", "7"])
+    assert args.handler is cli.command_gnn
+    assert args.max_epochs == 7
+    assert args.dataset == "synthetic"
 
 
 def test_data_root_defaults_to_the_service_folder(monkeypatch: pytest.MonkeyPatch) -> None:
