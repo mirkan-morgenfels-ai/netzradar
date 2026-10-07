@@ -2,10 +2,10 @@
 
 Anomalie-Erkennung in Transaktionsnetzwerken: klassische Baseline gegen Graph Neural Networks. Zeitlicher Split, PR-AUC statt Accuracy, feste Seeds, vorberechnete Ergebnisse, statische Visualisierung.
 
-[![CI](https://github.com/mirkan-morgenfels-ai/AI-Project-3/actions/workflows/ci.yml/badge.svg)](https://github.com/mirkan-morgenfels-ai/AI-Project-3/actions/workflows/ci.yml)
+[![CI](https://github.com/mirkan-morgenfels-ai/netzradar/actions/workflows/ci.yml/badge.svg)](https://github.com/mirkan-morgenfels-ai/netzradar/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 
-Live-Demo: [Platzhalter: noch nicht deployt. Geplant ist ein Vercel-Projekt mit Root `apps/web`, Seite unter `/projects/netzradar`.]
+Live-Demo: https://netzradar.vercel.app/projects/netzradar
 
 **English summary.** NetzRadar is a reproducible case study in graph-based fraud and anti-money-laundering detection. It compares a classical baseline (robust z-scores, Isolation Forest with graph centrality features) with Graph Neural Networks (GCN and GraphSAGE in PyTorch Geometric) on a transaction network, using a strict temporal train/test split and precision-recall metrics suited to a rare positive class. Models are trained offline; the web page renders precomputed results (an interactive subgraph around the top anomalies plus a metrics table) from static JSON, with no model and no API call at runtime. Status on 7 October 2026: data preparation, temporal split, baselines, GNNs and export run on a synthetic transaction network with planted laundering patterns. On its test period GraphSAGE reaches a PR-AUC of 0.8941 and GCN 0.7897, against 0.1633 for the robust z-scores and 0.1281 for the Isolation Forest (expected PR-AUC of a random ranking 0.1181, 95th percentile 0.1420). A control MLP of the same size, trained on the same labels and selected by the same procedure but without edges, reaches 0.3765. Its distance to the baselines mixes supervision, the change of model and the four graph features; GCN and GraphSAGE add 0.41 and 0.52 on top of the MLP, so most of the gain on this network comes from the neighbourhood. The synthetic network is strongly homophilous (97.6 % of the edges between two labelled nodes join equal labels), so part of that advantage is built into the generator; the numbers say nothing about real transaction data. Raw datasets are not redistributed; see the dataset section for licences.
 
@@ -137,8 +137,8 @@ Voraussetzungen: Python 3.12 und [uv](https://docs.astral.sh/uv/). PyTorch 2.8 u
 Linux und macOS mit make:
 
 ```bash
-git clone https://github.com/mirkan-morgenfels-ai/AI-Project-3.git
-cd AI-Project-3/services/k3-train
+git clone https://github.com/mirkan-morgenfels-ai/netzradar.git
+cd netzradar/services/k3-train
 uv sync --extra gnn
 make verify
 make data SYNTH=1
@@ -153,8 +153,8 @@ make verify
 Windows (PowerShell) ohne make:
 
 ```powershell
-git clone https://github.com/mirkan-morgenfels-ai/AI-Project-3.git
-cd AI-Project-3\services\k3-train
+git clone https://github.com/mirkan-morgenfels-ai/netzradar.git
+cd netzradar\services\k3-train
 uv sync --extra gnn
 uv run --extra gnn k3-train verify
 uv run k3-train data --synth

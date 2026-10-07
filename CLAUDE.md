@@ -10,7 +10,7 @@ Zweck: Reproduzierbare Fallstudie zur Anomalie-Erkennung in Transaktionsnetzwerk
 - Bekannte Widersprüche, Stand 07.10.2026:
   - Umsetzungsdokument 3.6 nennt als Abnahme von Schritt 4 „GNN schlägt Baseline (PR-AUC)“, 3.12 „GNN schlägt Baseline messbar“. Das widerspricht Regel 5. Es gilt der Abschnitt „Abnahme Schritt 4“ unten.
   - Umsetzungsdokument 3.8: Das GNN-Training sei zu schwer für die CI, dort laufe nur ein Smoke-Test. Dennis hat am 07.10.2026 entschieden (E7), dass die CI die GNN auf dem synthetischen Netz voll trainiert (`make gnn`) und mit `verify` nachrechnet, weil das Netz mit 12.000 Knoten klein ist. Für Elliptic bleibt es beim lokalen Training. Vorschlag: 3.8 im Umsetzungsdokument entsprechend anpassen.
-  - Umsetzungsdokument 0.5 und Projektanweisungen sprechen von einem gemeinsamen Monorepo mit K1 und K2. Tatsächlich ist K3 ein eigenes Repo (`AI-Project-3`), wie K1 und K2 auch.
+  - Umsetzungsdokument 0.5 und Projektanweisungen sprechen von einem gemeinsamen Monorepo mit K1 und K2. Tatsächlich ist K3 ein eigenes Repo (`netzradar`), wie K1 (`depotdoktor`) und K2 (`kontoklar`) auch.
   - Umsetzungsdokument 3.3.4: „alles licit ergibt ~98 % Accuracy“. Das gilt bezogen auf alle Knoten. Bewertet wird aber nur auf gelabelten Knoten. Bei Elliptic sind davon 42.019 / 46.564 ≈ 90,2 % licit, ein Alles-licit-Modell hätte dort also etwa 90 % Accuracy. Im README ist das korrigiert.
   - Umsetzungsdokument 3.7 exportiert beispielhaft `data/k3/result.json` mit `baseline_pr_auc`. Verbindlich ist der Datenvertrag unten: drei Dateien, Schlüssel in camelCase.
   - Projektanweisungen nennen die Projektstruktur `src/load.py`, `src/synth.py` usw. Tatsächlich liegt der Code im Paket `services/k3-train/src/k3_train/`.
@@ -24,7 +24,7 @@ Zweck: Reproduzierbare Fallstudie zur Anomalie-Erkennung in Transaktionsnetzwerk
 - Python in `services/k3-train`, aufgelöst laut `uv.lock` (48 Pakete): Python 3.12 (`requires-python >=3.12,<3.13`, lokal 3.12.15), uv 0.12.23 mit Build-Backend `uv_build`, networkx 3.7, numpy 2.5.3, pandas 3.0.6, scikit-learn 1.9.1, scipy 1.18.1, pytest 9.1.1, ruff 0.16.10. Die Untergrenze `networkx>=3.5` ist nötig, weil `spring_layout(method="force")` erst ab 3.5 existiert. System-Python 3.14 ist für PyG 2.7 zu neu, deshalb uv mit Python 3.12.
 - GNN als optionales Extra `gnn` (`[project.optional-dependencies]`, Entscheidung E2): `torch>=2.8,<2.9` und `torch-geometric>=2.7,<2.8` (E1), aufgelöst torch 2.8.0 und PyG 2.7.0. torch kommt über `[tool.uv.sources]` aus dem Index `pytorch-cpu` (https://download.pytorch.org/whl/cpu, `explicit = true`): `2.8.0+cpu` für Linux und Windows, `2.8.0` für macOS. PyG führt torch nicht als Abhängigkeit, der Resolver prüft die Verträglichkeit also nicht; deshalb ist torch auf 2.8 gebunden (laut Release-Notes von PyG 2.7.0 die Hauptversion). Das Extra bringt 27 Pakete mit; das Windows-Wheel von torch hat 590,7 MiB. PyG 2.7.0 gibt beim Import eine DeprecationWarning zu `torch_geometric.distributed` aus; pytest filtert genau diese Meldung (`filterwarnings` in `pyproject.toml`). Code ohne torch-Bedarf importiert torch nicht: `data`, `baseline`, `export` und `verify` ohne GNN-Runs laufen ohne das Extra; `cli.py` lädt `gnn_pipeline` erst im Befehl `gnn`, `verify.py` erst beim Nachrechnen von GNN-Runs.
 - CI: GitHub Actions `.github/workflows/ci.yml` mit den Jobs `web`, `train` und `train-core` (`uv sync --locked` ohne Extra, `uv run pytest`; zeigt, dass die Kernmodule ohne torch laufen). Actions auf Node-24-Runtime: `actions/checkout@v5`, `pnpm/action-setup@v6`, `actions/setup-node@v5`, `actions/upload-artifact@v7`. `astral-sh/setup-uv@v10.2.0` ist fest eingetragen, weil setup-uv seit v7 keinen wandernden Major-Tag mehr veröffentlicht; die uv-Version ist dort auf 0.12.23 gesetzt. Der Job `train` setzt `UV_LOCKED=1`, damit kein `uv run` die Lockdatei still neu auflöst, und `K3_REQUIRE_GNN=1`, damit fehlendes torch die Tests rot statt übersprungen macht.
-- Hosting: Vercel Hobby, statisch. Das Projekt ist noch nicht angelegt.
+- Hosting: Vercel Hobby, statisch. Projekt `netzradar` im Team AI-Team, https://netzradar.vercel.app/projects/netzradar.
 
 ## Struktur
 
@@ -186,11 +186,11 @@ Hinweise:
 
 ## Git und Deployment
 
-- Remote: https://github.com/mirkan-morgenfels-ai/AI-Project-3 (derzeit privat), Standardzweig `main`.
+- Remote: https://github.com/mirkan-morgenfels-ai/netzradar (öffentlich; das frühere private Repo AI-Project-3 ist Archiv), Standardzweig `main`.
 - Repo-lokale Git-Identität ist Pflicht: `user.email` = `324466065+mirkan-morgenfels-ai@users.noreply.github.com`, `user.name` derzeit `mirkan-morgenfels-ai`. Ohne die noreply-Adresse blockiert Vercel das Deployment („commit email could not be matched“). Global ist eine andere Adresse eingetragen.
 - Das Home-Verzeichnis `C:\Users\MirkanDeniz` ist selbst ein Git-Repo (Branch `master`). Git-Befehle immer im Repo-Root `netzradar` ausführen.
 - Push und PR über die GitHub CLI als `mirkan-morgenfels-ai`. Repo-lokal ist `credential.https://github.com.helper` gesetzt: erst leer, dann `!<gh.exe> auth git-credential`. Die globale Git-Konfiguration bleibt unverändert, andere Projekte laufen weiter über den Windows Credential Manager. gh liegt unter `%LOCALAPPDATA%\Microsoft\WinGet\Packages\GitHub.cli_Microsoft.Winget.Source_8wekyb3d8bbwe\bin\gh.exe`, nicht im PATH. PRs mit `gh pr create --base main`.
-- Vercel: Projekt noch anzulegen, Root Directory `apps/web`, Framework Next.js. Danach deployt Vercel jeden Push auf `main`. Umgebungsvariablen sind nicht nötig; `NEXT_PUBLIC_SITE_URL` ist optional für `metadataBase` (leer bedeutet http://localhost:3000). Python läuft nicht auf Vercel.
+- Vercel: Projekt `netzradar` (Team AI-Team, angelegt am 07.10.2026), Root Directory `apps/web`, Framework Next.js, Produktions-URL https://netzradar.vercel.app. Vercel deployt jeden Push auf `main`. Umgebungsvariablen sind nicht nötig; `NEXT_PUBLIC_SITE_URL` ist optional für `metadataBase` (leer bedeutet http://localhost:3000). Python läuft nicht auf Vercel.
 - `.gitattributes` erzwingt LF (`* text=auto eol=lf`, `*.pdf` und `*.png` binär), weil `core.autocrlf=true` systemweit gesetzt ist.
 - `next-env.d.ts` ist gitignored: Die Datei enthält Kommentare und verweist auf `.next/types`, ohne `.next` bricht `tsc` ab.
 
