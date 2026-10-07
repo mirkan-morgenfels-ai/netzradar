@@ -237,7 +237,7 @@ Hinweise:
 
 ## Design
 
-Designsystem „Navy & Gold“ (Branch `design/navy-gold`, Stand 07.10.2026), gemeinsam mit K1 und K2: Kopf, Fuß, Startseite, Rechtsseiten, 404 und die Bausteine in `apps/web/components/site/` sind in allen drei Repos gleich, nur die Projektdaten unterscheiden sich. Leitidee: dunkler Rahmen in Navy mit Goldakzenten (Kopf, Hero, Fuß), helle Arbeitsflächen in Elfenbein (Tabellen, Diagramme, Graph). Blau ist erlaubt.
+Designsystem „Navy & Gold“ (seit 07.10.2026 live), gemeinsam mit K1 und K2: Kopf, Fuß, Startseite, Rechtsseiten, 404 und die Bausteine in `apps/web/components/site/` sind in allen drei Repos gleich, nur die Projektdaten unterscheiden sich. Leitidee: dunkler Rahmen in Navy mit Goldakzenten (Kopf, Hero, Fuß), helle Arbeitsflächen in Elfenbein (Tabellen, Diagramme, Graph). Blau ist erlaubt.
 
 - Tokens (`@theme` in `apps/web/app/globals.css`):
   - Navy: navy-950 #0b1626 (Kopf, Hero, Fuß), navy-900 #101f35 (Karten auf Navy), navy-800 #16273f (Hover, aktive Pille), navy-700 #26354d (Haarlinien auf Navy), navy-300 #8f9bb0 (gedämpfter Text auf Navy).
