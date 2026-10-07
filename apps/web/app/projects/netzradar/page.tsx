@@ -445,7 +445,7 @@ export default function NetzRadarPage() {
   return (
     <>
       <ProjectHero
-        eyebrow={`${PROJECT?.kicker ?? "Projekt K3"} · ${PROJECT?.topic ?? "Graph-ML"}`}
+        eyebrow={`${PROJECT?.kicker ?? "Projekt 03"} · ${PROJECT?.topic ?? "Graph-ML"}`}
         title={
           <>
             Netz<em className="text-gold-light">Radar</em>

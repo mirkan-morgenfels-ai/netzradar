@@ -126,7 +126,7 @@ test("NetzRadar page renders headline, metrics, graph and node details without l
 
   await expect(page.getByRole("heading", { level: 1, name: "NetzRadar" })).toBeVisible();
   await expect(page.getByRole("heading", { level: 1, name: "NetzRadar" })).toHaveCSS("font-family", /Cormorant/);
-  await expect(page.getByText("Projekt K3 · Graph-ML", { exact: true })).toBeVisible();
+  await expect(page.getByText("Projekt 03 · Graph-ML", { exact: true })).toBeVisible();
 
   const metricsTable = page.getByTestId("metrics-table");
   await expect(metricsTable).toBeVisible();

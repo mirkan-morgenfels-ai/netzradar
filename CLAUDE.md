@@ -299,7 +299,7 @@ Abnahme der GNN (Schritt 4, erfüllt): Vergleich GNN gegen Baseline gemessen und
 2. **Live-Demo auf Hugging Face Spaces** (Free CPU, pausiert bei Inaktivität): ja oder nein. Die Seite selbst bleibt statisch (Regel 6); ein Space wäre höchstens ein externer Link.
 3. **Starkes überwachtes Verfahren ohne Kanten** (Random Forest oder HistGradientBoosting auf lokalen Merkmalen plus Graphmaßen, gleicher Split, gleiche Auswahl am Validierungsteil, Seed 42). Neues Verfahren, also Vertragsänderung. Bis dahin nennt „Grenzen“ die Lücke, und der Satz zur Nachbarschaft gilt nur gegenüber dem MLP.
 4. **Seed-Streuung auf der Seite** (`seedSpread` in `metrics.json`, Vertrag v4, Spalte „Spanne über 5 Seeds“) und **Startknoten nach GNN-Score** als Umschalter. Beides ändert den Export.
-5. **Kicker „Projekt K1/K2/K3“** auf Start- und Projektseite (`PROJECTS.kicker`) durch sprechende Bezeichnungen ersetzen; danach eine reine Datenänderung in allen drei Repos. Vorschlag aus der Designkritik vom 07.10.2026: „Projekt 01“, „02“, „03“ wie auf Karten und im Fuß, im Vorschaubild nur der Kleintext („PROJEKT 03 · GRAPH-ML“).
+5. ~~**Kicker „Projekt K1/K2/K3“**~~ Entschieden am 08.10.2026: „Projekt 01/02/03“ wie auf den Projektkarten, in allen drei Repos umgesetzt (`PROJECTS.kicker`, Eyebrow der Projektseite, Kleintext im Vorschaubild).
 6. **CLAUDE.md öffentlich lassen** (bereinigt, Standard) oder aus dem Repo nehmen und nur eine kurze Architekturbeschreibung veröffentlichen.
 7. **Impressum**: ladungsfähige Anschrift für K1 bis K3.
 8. **Begriffe**: „auffällig“ steht auf der Seite für das Label illicit und zugleich für hohe Scores; eindeutige Begriffe für Label und Modellausgabe wählen.

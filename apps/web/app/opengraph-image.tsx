@@ -160,7 +160,7 @@ export default function OpengraphImage() {
               }}
             >
               <div style={{ width: 40, height: 1, backgroundColor: GOLD, marginRight: 16 }} />
-              {`${PROJECT?.kicker ?? "Projekt K3"} · ${PROJECT?.topic ?? "Graph-ML"}`}
+              {`${PROJECT?.kicker ?? "Projekt 03"} · ${PROJECT?.topic ?? "Graph-ML"}`}
             </div>
             <div style={{ display: "flex", marginTop: 26 }}>
               <Glyphs id="title" height={150} top={-760} bottom={250} colors={[IVORY, GOLD_LIGHT]} />

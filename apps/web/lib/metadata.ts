@@ -5,7 +5,7 @@ export const OG_LOCALE = "de_DE";
 
 export const OG_SUBTITLE = "Anomalie-Erkennung in Transaktionsnetzwerken";
 
-export const OG_IMAGE_VERSION = 3;
+export const OG_IMAGE_VERSION = 4;
 
 export const OG_IMAGE_PATH = `/opengraph-image?v=${OG_IMAGE_VERSION}`;
 
