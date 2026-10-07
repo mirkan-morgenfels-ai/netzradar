@@ -1,21 +1,41 @@
-import { FEATURE_SET_TEXT, formatDecimal, formatInteger, joinList, METHOD_SHORT_TEXT, METHOD_TEXT } from "./format";
-import { beatsRandomRankings, bestAccuracyAtFlagged, compareScores } from "./summary";
+import { FEATURE_SET_TEXT, formatDecimal, formatInteger, joinList, METHOD_SHORT_TEXT } from "./format";
+import { beatsRandomRankings, bestAccuracyAtFlagged, compareScores, hitsAtRecall } from "./summary";
 import type { EvaluationInfo, Run } from "./types";
 
 export const NEIGHBOURHOOD_SHARE_SENTENCE =
-  "Auf diesem Netz kommt der größere Teil des Vorsprungs der Graph Neural Networks damit aus der Nachbarschaft, nicht aus den Labels allein.";
+  "Gegenüber dem MLP gleicher Größe ohne Kanten kommt auf diesem Netz der größere Teil des Vorsprungs der Graph Neural Networks aus der Nachbarschaft.";
+
+export const FEW_HITS_RECALL = 0.1;
 
 export const NO_NEIGHBOURHOOD_LEAD_SENTENCE =
   "Die Nachbarschaft bringt auf diesem Netz keinen belastbaren Vorsprung gegenüber dem MLP.";
 
-export function randomSentence(run: Run, evaluation: EvaluationInfo): string {
+export function randomComparisonSentence(runs: readonly Run[], evaluation: EvaluationInfo): string {
   const quantile = formatDecimal(evaluation.randomPrAucQ95);
-  if (beatsRandomRankings(run.prAuc, evaluation)) {
-    return `${run.displayName}: PR-AUC ${formatDecimal(run.prAuc)}, über dem 95-%-Quantil zufälliger Rangfolgen (${quantile}). Der Score ordnet auffällige Knoten also besser als Zufall.`;
+  const expected = formatDecimal(evaluation.randomPrAucExpected);
+  const below = runs.filter((run) => !beatsRandomRankings(run.prAuc, evaluation));
+  if (below.length === 0) {
+    return `Alle Verfahren liegen über dem 95-%-Quantil zufälliger Rangfolgen (${quantile}) und ordnen auffällige Knoten damit besser als Zufall.`;
   }
-  return `${run.displayName}: PR-AUC ${formatDecimal(run.prAuc)}, nicht über dem 95-%-Quantil zufälliger Rangfolgen (${quantile}). Von einer zufälligen Rangfolge (Erwartungswert ${formatDecimal(
-    evaluation.randomPrAucExpected,
-  )}) ist das nicht zu unterscheiden.`;
+  const values = joinList(below.map((run) => `${METHOD_SHORT_TEXT[run.method]} (${formatDecimal(run.prAuc)})`));
+  if (below.length === runs.length) {
+    return `Kein Verfahren liegt über dem 95-%-Quantil zufälliger Rangfolgen (${quantile}). Bei ${values} ist die PR-AUC von der einer zufälligen Rangfolge (Erwartungswert ${expected}) nicht zu unterscheiden.`;
+  }
+  const names = joinList(below.map((run) => METHOD_SHORT_TEXT[run.method]));
+  return `Alle Verfahren außer ${names} liegen über dem 95-%-Quantil zufälliger Rangfolgen (${quantile}) und ordnen auffällige Knoten damit besser als Zufall. Bei ${values} ist die PR-AUC von der einer zufälligen Rangfolge (Erwartungswert ${expected}) nicht zu unterscheiden.`;
+}
+
+export function recallSentence(runs: readonly Run[], positives: number): string {
+  const items = runs.map((run) => {
+    const name = METHOD_SHORT_TEXT[run.method];
+    if (run.recallAtPrecision50 === 0) return `${name} ${formatDecimal(0)} (keine Schwelle erreicht diese Precision)`;
+    const hits = hitsAtRecall(run.recallAtPrecision50, positives);
+    return `${name} ${formatDecimal(run.recallAtPrecision50)} (etwa ${formatInteger(hits)} von ${formatInteger(positives)})`;
+  });
+  const fewHits = runs.every((run) => run.recallAtPrecision50 < FEW_HITS_RECALL);
+  return `Recall bei Precision ≥ 0,5 – ${items.join("; ")}.${
+    fewHits ? " Bei dieser Precision finden die Verfahren kaum auffällige Knoten." : ""
+  }`;
 }
 
 export function compareItem(run: Run, reference: Run, margin: number): string {
@@ -26,6 +46,24 @@ export function compareItem(run: Run, reference: Run, margin: number): string {
   if (kind === "higher") return `${name} ${value}, um ${difference} höher`;
   if (kind === "lower") return `${name} ${value}, um ${difference} niedriger`;
   return `${name} ${value}, Unterschied ${difference}, kleiner als der Mindestabstand`;
+}
+
+export function baselineGapEffectsSentence(graphRuns: readonly Run[], baseline: Run): string {
+  const differing = graphRuns.filter((run) => run.featureSet !== baseline.featureSet);
+  if (differing.length === 0) {
+    return "Dieser Abstand mischt zwei Effekte: Die Graph Neural Networks lernen aus Labels, die Baselines nicht, und nur die Graph Neural Networks sehen die Nachbarschaft.";
+  }
+  const all = differing.length === graphRuns.length;
+  const subject = all
+    ? "sie nutzen"
+    : `${joinList(differing.map((run) => METHOD_SHORT_TEXT[run.method]))} ${differing.length === 1 ? "nutzt" : "nutzen"}`;
+  const features =
+    baseline.featureSet === "local"
+      ? `${subject} zusätzlich die Graphmaße`
+      : `${subject} anders als die bessere Baseline keine Graphmaße`;
+  return `Dieser Abstand mischt mehrere Effekte: Die Graph Neural Networks lernen aus Labels, die Baselines nicht; ${features}; und nur ${
+    all ? "sie" : "die Graph Neural Networks"
+  } sehen die Nachbarschaft.`;
 }
 
 export function pairSentence(first: Run, second: Run, margin: number): string {
@@ -43,10 +81,10 @@ export function baselineSentence(zscore: Run, iforest: Run, margin: number): str
   const difference = formatDecimal(Math.abs(iforest.prAuc - zscore.prAuc));
   const lead =
     kind === "lower"
-      ? `Der Isolation Forest mit zusätzlichen Graphmaßen liegt um ${difference} unter den robusten Z-Scores auf Einzelmerkmalen.`
+      ? `Der Isolation Forest mit zusätzlichen Graphmaßen liegt um ${difference} unter den robusten Z-Scores auf lokalen Merkmalen.`
       : kind === "higher"
-        ? `Der Isolation Forest mit zusätzlichen Graphmaßen liegt um ${difference} über den robusten Z-Scores auf Einzelmerkmalen.`
-        : `Der Isolation Forest mit zusätzlichen Graphmaßen und die robusten Z-Scores auf Einzelmerkmalen liegen nur ${difference} auseinander, weniger als der Mindestabstand; eine Rangfolge ist daraus nicht belastbar.`;
+        ? `Der Isolation Forest mit zusätzlichen Graphmaßen liegt um ${difference} über den robusten Z-Scores auf lokalen Merkmalen.`
+        : `Der Isolation Forest mit zusätzlichen Graphmaßen und die robusten Z-Scores auf lokalen Merkmalen liegen nur ${difference} auseinander, weniger als der Mindestabstand; eine Rangfolge ist daraus nicht belastbar.`;
   return `${lead} Da sich Verfahren und Merkmalssatz gleichzeitig unterscheiden, lässt sich daraus nicht ablesen, ob die Graphmaße helfen.`;
 }
 
@@ -89,19 +127,19 @@ export function decompositionSentences(mlp: Run, baseline: Run, graphRuns: reado
   ];
   if (supervisionKind === "higher") {
     sentences.push(
-      `Das sind ${formatDecimal(supervision)} mehr als die bessere Baseline (${METHOD_TEXT[baseline.method]}, ${formatDecimal(
+      `Das sind ${formatDecimal(supervision)} mehr als die bessere Baseline (${METHOD_SHORT_TEXT[baseline.method]}, ${formatDecimal(
         baseline.prAuc,
       )}). Dieser Abstand mischt die Wirkung der Labels mit dem Wechsel des Verfahrens${featureNote}.`,
     );
   } else if (supervisionKind === "lower") {
     sentences.push(
-      `Das sind ${formatDecimal(-supervision)} weniger als die bessere Baseline (${METHOD_TEXT[baseline.method]}, ${formatDecimal(
+      `Das sind ${formatDecimal(-supervision)} weniger als die bessere Baseline (${METHOD_SHORT_TEXT[baseline.method]}, ${formatDecimal(
         baseline.prAuc,
       )}); die Labels allein helfen hier also nicht.`,
     );
   } else {
     sentences.push(
-      `Das liegt nahe an der besseren Baseline (${METHOD_TEXT[baseline.method]}, ${formatDecimal(
+      `Das liegt nahe an der besseren Baseline (${METHOD_SHORT_TEXT[baseline.method]}, ${formatDecimal(
         baseline.prAuc,
       )}); die Labels allein bringen hier keinen belastbaren Vorsprung.`,
     );

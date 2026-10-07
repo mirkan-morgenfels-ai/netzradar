@@ -33,7 +33,7 @@ describe("curveSeries", () => {
   it("draws Z-Scores in gold and the Isolation Forest in wine with distinct dashes", () => {
     const series = curveSeries(RUNS);
     expect(series.map((entry) => [entry.name, entry.color, entry.dash])).toEqual([
-      ["Robuste Z-Scores", "#b8912f", ""],
+      ["Z-Scores", "#b8912f", ""],
       ["Isolation Forest", "#7a1f2b", "8 3"],
     ]);
     expect(series[0]?.points).toBe(RUNS[0]?.prCurve);
@@ -41,11 +41,11 @@ describe("curveSeries", () => {
 
   it("draws all five methods with the styles of the contract", () => {
     expect(curveSeries(ALL_RUNS).map((entry) => [entry.name, entry.color, entry.dash])).toEqual([
-      ["Robuste Z-Scores", "#b8912f", ""],
+      ["Z-Scores", "#b8912f", ""],
       ["Isolation Forest", "#7a1f2b", "8 3"],
-      ["GCN (Graph Convolutional Network)", "#2f6b3a", "2 3"],
+      ["GCN", "#2f6b3a", "2 3"],
       ["GraphSAGE", "#111111", "8 3 2 3"],
-      ["MLP ohne Kanten (Kontrolle)", "#6b6b66", "12 4"],
+      ["MLP (ohne Kanten)", "#6b6b66", "12 4"],
     ]);
   });
 

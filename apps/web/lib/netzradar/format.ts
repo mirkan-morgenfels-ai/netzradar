@@ -1,6 +1,7 @@
 import type { FeatureSet, Method, NodeLabel, StepRange } from "./types";
 
 const LOCALE = "de-DE";
+const MINUS_SIGN = "−";
 const ISO_PARTS_PATTERN = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/;
 
 export const LABEL_TEXT: Record<NodeLabel, string> = {
@@ -22,7 +23,7 @@ export const METHOD_SHORT_TEXT: Record<Method, string> = {
   iforest: "Isolation Forest",
   gcn: "GCN",
   graphsage: "GraphSAGE",
-  mlp: "MLP",
+  mlp: "MLP (ohne Kanten)",
 };
 
 export const METHOD_KIND_TEXT: Record<Method, string> = {
@@ -38,12 +39,18 @@ export const FEATURE_SET_TEXT: Record<FeatureSet, string> = {
   "local+graph": "lokale Merkmale und Graphmaße",
 };
 
+export function withMinusSign(text: string): string {
+  return text.startsWith("-") ? `${MINUS_SIGN}${text.slice(1)}` : text;
+}
+
 export function formatDecimal(value: number, digits = 4): string {
-  return value.toLocaleString(LOCALE, {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-    useGrouping: true,
-  });
+  return withMinusSign(
+    value.toLocaleString(LOCALE, {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+      useGrouping: true,
+    }),
+  );
 }
 
 export function formatInteger(value: number): string {
@@ -51,7 +58,7 @@ export function formatInteger(value: number): string {
 }
 
 export function formatPlainNumber(value: number): string {
-  return value.toLocaleString(LOCALE, { maximumFractionDigits: 6, useGrouping: false });
+  return withMinusSign(value.toLocaleString(LOCALE, { maximumFractionDigits: 6, useGrouping: false }));
 }
 
 export function formatPercent(value: number, digits = 1): string {
@@ -81,6 +88,12 @@ export function formatIsoDate(iso: string): string {
   if (!match) return iso;
   const [, year, month, day] = match;
   return `${day}.${month}.${year}`;
+}
+
+export function formatDateRange(range: { from: string; to: string }): string {
+  const from = formatIsoDate(range.from);
+  const to = formatIsoDate(range.to);
+  return from === to ? from : `${from} bis ${to}`;
 }
 
 export function formatIsoTimeUtc(iso: string): string | null {

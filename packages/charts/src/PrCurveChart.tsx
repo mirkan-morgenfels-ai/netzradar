@@ -141,6 +141,7 @@ export function PrCurveChart({ series, referenceLevel, height = 320, formatValue
               label={{ value: "Precision", angle: -90, position: "insideLeft", fill: CHART_COLORS.stone, fontSize: 12 }}
             />
             <Tooltip
+              separator=": "
               cursor={{ stroke: CHART_COLORS.stone, strokeDasharray: "3 3" }}
               contentStyle={{ borderColor: CHART_COLORS.line, borderRadius: 6, fontSize: 12, color: CHART_COLORS.ink }}
               labelStyle={{ color: CHART_COLORS.stone }}

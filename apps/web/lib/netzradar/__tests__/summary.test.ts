@@ -22,6 +22,7 @@ import {
   numberParameter,
   parameterEntries,
   reachedEpochLimit,
+  runDateRange,
   searchWeight,
   selectedCandidate,
   zeroMadFeatures,
@@ -187,6 +188,16 @@ describe("training summaries", () => {
     expect(finalTrainRatioWeight(runs)).toBe(9.2893);
     expect(finalTrainRatioWeight([run("gcn", 0.7897, { training: training({ search }) })])).toBeNull();
     expect(searchWeight([run("zscore", 0.1633)], "fixed")).toBeNull();
+  });
+});
+
+describe("runDateRange", () => {
+  it("spans the earliest and latest run date", () => {
+    expect(runDateRange([run("zscore", 0.1), run("gcn", 0.2)])).toEqual({ from: "2026-10-06", to: "2026-10-06" });
+    expect(
+      runDateRange([run("gcn", 0.2, { date: "2026-10-07" }), run("zscore", 0.1, { date: "2026-10-06" })]),
+    ).toEqual({ from: "2026-10-06", to: "2026-10-07" });
+    expect(runDateRange([])).toBeNull();
   });
 });
 

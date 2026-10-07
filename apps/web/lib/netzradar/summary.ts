@@ -47,6 +47,13 @@ export function expectedScoreGnnMethod(runs: readonly Run[]): GraphMethod | null
   return best;
 }
 
+export function runDateRange(runs: readonly Run[]): { from: string; to: string } | null {
+  const dates = [...new Set(runs.map((run) => run.date))].sort();
+  const from = dates[0];
+  const to = dates[dates.length - 1];
+  return from === undefined || to === undefined ? null : { from, to };
+}
+
 export function bestRunAmong(runs: readonly Run[], methods: readonly Method[]): Run | null {
   return bestRun(runs.filter((run) => methods.includes(run.method)));
 }
