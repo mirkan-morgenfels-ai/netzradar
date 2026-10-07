@@ -14,8 +14,13 @@ import {
 } from "../metadata";
 import { SITE_NAME } from "../site";
 
-const PREVIEW_IMAGE_SOURCES = ["../../app/opengraph-image.tsx", "../../components/BrandMark.tsx"];
-const PREVIEW_IMAGE_FINGERPRINT = "c62c90caec3ef618";
+const PREVIEW_IMAGE_SOURCES = [
+  "../../app/opengraph-image.tsx",
+  "../../components/BrandMark.tsx",
+  "../../components/site/netMotif.ts",
+  "../og-glyphs.ts",
+];
+const PREVIEW_IMAGE_FINGERPRINT = "2bb4a5ad86531974";
 
 function previewImageFingerprint(): string {
   const hash = createHash("sha256");
@@ -41,7 +46,7 @@ describe("pageMetadata", () => {
         type: "website",
         images: [
           {
-            url: "/opengraph-image?v=1",
+            url: "/opengraph-image?v=3",
             type: "image/png",
             width: 1200,
             height: 630,
@@ -54,7 +59,7 @@ describe("pageMetadata", () => {
 
   it("ties the preview image URL to its inputs: bump OG_IMAGE_VERSION and the fingerprint together", () => {
     expect({ version: OG_IMAGE_VERSION, fingerprint: previewImageFingerprint() }).toEqual({
-      version: 1,
+      version: 3,
       fingerprint: PREVIEW_IMAGE_FINGERPRINT,
     });
     expect(OG_IMAGE_PATH).toBe(`/opengraph-image?v=${OG_IMAGE_VERSION}`);

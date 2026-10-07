@@ -10,19 +10,27 @@ export interface NodeStyle {
 export const NODE_STYLES: Record<NodeLabel, NodeStyle> = {
   illicit: { fill: CHART_COLORS.wine, ring: CHART_COLORS.gold, ringSize: 0.4 },
   licit: { fill: CHART_COLORS.moss, ring: CHART_COLORS.moss, ringSize: 0 },
-  unknown: { fill: CHART_COLORS.paper, ring: CHART_COLORS.stone, ringSize: 0.3 },
+  unknown: { fill: CHART_COLORS.surface, ring: CHART_COLORS.slate, ringSize: 0.3 },
 };
 
 export const NODE_SIZE_BY_HOP: Record<Hop, number> = { 0: 9, 1: 4.5, 2: 3.5 };
 export const FOCUS_SIZE_FACTOR = 1.3;
 
+export function premultiplied(hex: string, alpha: number): string {
+  const value = Number.parseInt(hex.slice(1), 16);
+  const channel = (shift: number) => Math.round(((value >> shift) & 0xff) * alpha);
+  return `rgba(${channel(16)}, ${channel(8)}, ${channel(0)}, ${alpha})`;
+}
+
+export const EDGE_ALPHA = 0.5;
+
 export const EDGE_STYLES = {
-  normal: { color: "rgba(107, 107, 102, 0.6)", size: 1 },
-  active: { color: CHART_COLORS.ink, size: 2.5 },
-  dimmed: { color: CHART_COLORS.line, size: 1 },
+  normal: { color: premultiplied(CHART_COLORS.slate, EDGE_ALPHA), size: 1 },
+  active: { color: CHART_COLORS.navy, size: 2.5 },
+  dimmed: { color: "#e9ebee", size: 1 },
 } as const;
 
-export const DIMMED_NODE_COLOR = CHART_COLORS.line;
+export const DIMMED_NODE_COLOR = "#dfe2e6";
 
 export interface GraphNodeAttributes {
   x: number;

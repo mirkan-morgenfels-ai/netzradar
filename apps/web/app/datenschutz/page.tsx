@@ -17,7 +17,7 @@ export default function DatenschutzPage() {
         <p>
           Verantwortlich für die Datenverarbeitung auf dieser Seite im Sinne der Datenschutz-Grundverordnung (DSGVO) ist{" "}
           {OPERATOR.name}, {OPERATOR.city}. Kontakt per E-Mail:{" "}
-          <a href={`mailto:${OPERATOR.email}`} className="text-moss underline">
+          <a href={`mailto:${OPERATOR.email}`} className="link">
             {OPERATOR.email}
           </a>
           .

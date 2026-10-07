@@ -11,33 +11,38 @@ const LABEL_ENTRIES: ReadonlyArray<{ label: NodeLabel; shape: string }> = [
 
 export function GraphLegend() {
   return (
-    <div className="rounded-lg border border-line bg-surface p-4 text-sm" data-testid="graph-legend">
-      <h3 className="text-xs uppercase tracking-wide text-stone">Legende: Label im Datensatz</h3>
-      <ul className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
-        {LABEL_ENTRIES.map((entry) => (
-          <li key={entry.label} className="flex items-center gap-2">
-            <NodeSymbol label={entry.label} size={16} />
-            <span>{LABEL_TEXT[entry.label]}</span>
-            <span className="text-xs text-stone">({entry.shape})</span>
+    <div
+      className="rounded-2xl border border-line bg-surface px-5 py-4 text-sm shadow-card sm:px-6"
+      data-testid="graph-legend"
+    >
+      <h3 className="eyebrow">Legende: Label im Datensatz</h3>
+      <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
+        <ul className="flex flex-wrap gap-x-6 gap-y-2.5">
+          {LABEL_ENTRIES.map((entry) => (
+            <li key={entry.label} className="flex items-center gap-2">
+              <NodeSymbol label={entry.label} size={16} />
+              <span className="font-medium text-ink">{LABEL_TEXT[entry.label]}</span>
+              <span className="text-xs text-slate">({entry.shape})</span>
+            </li>
+          ))}
+        </ul>
+        <ul className="flex flex-col gap-2 border-line text-xs text-slate lg:shrink-0 lg:border-l lg:pl-8">
+          <li className="flex items-center gap-2.5">
+            <svg width="30" height="18" viewBox="0 0 30 18" aria-hidden="true" focusable="false" className="shrink-0">
+              <circle cx="5" cy="9" r="3" fill="none" stroke={CHART_COLORS.slate} strokeWidth="1.5" />
+              <circle cx="20" cy="9" r="8" fill="none" stroke={CHART_COLORS.slate} strokeWidth="1.5" />
+            </svg>
+            großer Kreis: Startknoten, klein: Nachbar im Abstand 1 oder 2
           </li>
-        ))}
-      </ul>
-      <ul className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-xs text-stone">
-        <li className="flex items-center gap-2">
-          <svg width="30" height="18" viewBox="0 0 30 18" aria-hidden="true" focusable="false">
-            <circle cx="5" cy="9" r="3" fill="none" stroke={CHART_COLORS.stone} strokeWidth="1.5" />
-            <circle cx="20" cy="9" r="8" fill="none" stroke={CHART_COLORS.stone} strokeWidth="1.5" />
-          </svg>
-          großer Kreis: Startknoten, klein: Nachbar im Abstand 1 oder 2
-        </li>
-        <li className="flex items-center gap-2">
-          <svg width="30" height="10" viewBox="0 0 30 10" aria-hidden="true" focusable="false">
-            <line x1="1" y1="5" x2="22" y2="5" stroke={CHART_COLORS.stone} strokeWidth="1.5" />
-            <path d="M22 1 L29 5 L22 9 Z" fill={CHART_COLORS.stone} />
-          </svg>
-          Pfeil: Richtung des Transaktionsflusses
-        </li>
-      </ul>
+          <li className="flex items-center gap-2.5">
+            <svg width="30" height="10" viewBox="0 0 30 10" aria-hidden="true" focusable="false" className="shrink-0">
+              <line x1="1" y1="5" x2="22" y2="5" stroke={CHART_COLORS.slate} strokeWidth="1.5" />
+              <path d="M22 1 L29 5 L22 9 Z" fill={CHART_COLORS.slate} />
+            </svg>
+            Pfeil: Richtung des Transaktionsflusses
+          </li>
+        </ul>
+      </div>
     </div>
   );
 }

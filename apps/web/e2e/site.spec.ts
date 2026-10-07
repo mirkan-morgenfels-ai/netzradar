@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const LEGAL_PAGES = [
   { path: "/impressum", heading: "Impressum" },
@@ -12,6 +12,7 @@ const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://netzradar
 const HOME_TITLE = "Projekte · Mirkan Deniz Günkaya";
 const PROJECT_TITLE = "NetzRadar – Anomalie-Erkennung in Transaktionsnetzwerken";
 const REFLOW_PATHS = ["/", "/projects/netzradar", ...LEGAL_PAGES.map((legal) => legal.path)];
+const HOME_HEADING = "Drei Projekte zu Finanzdaten, maschinellem Lernen und Graph-ML";
 
 async function metaContent(page: Page, selector: string): Promise<string | null> {
   return page.locator(selector).first().getAttribute("content");
@@ -19,19 +20,25 @@ async function metaContent(page: Page, selector: string): Promise<string | null>
 
 test("start page lists the three projects", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1, name: "Projekte" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: HOME_HEADING })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: HOME_HEADING })).toHaveCSS("font-family", /Cormorant/);
+  await expect(page.getByRole("main").getByRole("heading", { level: 2, name: "Projekte", exact: true })).toBeVisible();
   await expect(page.getByTestId(/^project-/)).toHaveCount(3);
 
   for (const slug of ["depotdoktor", "kontoklar"]) {
-    const link = page.getByTestId(`project-${slug}`).getByRole("link", { name: /^Zum Projekt/ });
+    const link = page.getByTestId(`project-${slug}`).getByRole("link", { name: /^Live ansehen/ });
     await expect(link).toHaveAttribute("href", /^https:\/\//);
     await expect(link).toHaveAttribute("rel", "noopener noreferrer");
     await expect(link).not.toHaveAttribute("target", /.+/);
   }
 
   await expect(
-    page.getByTestId("project-netzradar").getByRole("link", { name: /^Zum Projekt/ }),
+    page.getByTestId("project-netzradar").getByRole("link", { name: /^Live ansehen/ }),
   ).toHaveAttribute("href", "/projects/netzradar");
+  await expect(page.getByTestId("project-netzradar")).toContainText("Diese Website");
+  for (const slug of ["depotdoktor", "kontoklar"]) {
+    await expect(page.getByTestId(`project-${slug}`)).not.toContainText("Diese Website");
+  }
 
   for (const slug of ["depotdoktor", "kontoklar", "netzradar"]) {
     const repo = page.getByTestId(`project-${slug}`).getByRole("link", { name: /^Quellcode/ });
@@ -45,12 +52,14 @@ test("main navigation and skip link are present", async ({ page }) => {
   await page.goto("/projects/netzradar");
   const nav = page.getByRole("navigation", { name: "Hauptnavigation" });
   const links = nav.getByRole("list").getByRole("link");
-  await expect(links).toHaveCount(4);
+  await expect(links).toHaveCount(5);
   await expect(links.nth(0)).toHaveText("Start");
   await expect(links.nth(1)).toHaveAccessibleName("DepotDoktor (externe Seite)");
   await expect(links.nth(2)).toHaveAccessibleName("KontoKlar (externe Seite)");
   await expect(links.nth(3)).toHaveText("NetzRadar");
-  for (const index of [1, 2]) {
+  await expect(links.nth(4)).toHaveAccessibleName("GitHub (externe Seite)");
+  await expect(links.nth(4)).toHaveAttribute("href", REPO_BASE);
+  for (const index of [1, 2, 4]) {
     await expect(links.nth(index)).toHaveAttribute("href", /^https:\/\//);
     await expect(links.nth(index)).toHaveAttribute("rel", "noopener noreferrer");
     await expect(links.nth(index)).not.toHaveAttribute("target", /.+/);
@@ -62,6 +71,23 @@ test("main navigation and skip link are present", async ({ page }) => {
   await page.goto("/");
   await expect(nav.getByRole("link", { name: "Start" })).toHaveAttribute("aria-current", "page");
   await expect(nav.getByRole("link", { name: "NetzRadar", exact: true })).not.toHaveAttribute("aria-current", /.+/);
+});
+
+test("focus rings are gold-light on navy and gold-deep on light surfaces", async ({ page }) => {
+  await page.goto("/projects/netzradar");
+  await page.keyboard.press("Tab");
+  await expect(page.locator("a.skip-link")).toBeFocused();
+  const ring = (target: Locator) =>
+    target.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { color: style.outlineColor, style: style.outlineStyle, width: style.outlineWidth };
+    });
+  const onNavy = page.getByTestId("project-repo-link");
+  await onNavy.focus();
+  expect(await ring(onNavy)).toEqual({ color: "rgb(216, 189, 114)", style: "solid", width: "2px" });
+  const onLight = page.getByTestId("section-nav").getByRole("link", { name: "Daten" });
+  await onLight.focus();
+  expect(await ring(onLight)).toEqual({ color: "rgb(125, 95, 23)", style: "solid", width: "2px" });
 });
 
 test("footer and project page link the public repository", async ({ page }) => {
