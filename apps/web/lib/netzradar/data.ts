@@ -1,18 +1,25 @@
 import edgesJson from "../../../../data/k3/edges.json";
 import metricsJson from "../../../../data/k3/metrics.json";
 import nodesJson from "../../../../data/k3/nodes.json";
-import { expectedRandomPrAuc } from "./summary";
+import { expectedRandomPrAuc, expectedScoreGnnMethod, isLearnedMethod } from "./summary";
 import {
+  EDGE_MODES,
   FEATURE_SETS,
+  GRAPH_METHODS,
   HOPS,
   METHODS,
   NODE_LABELS,
+  POSITIVE_WEIGHT_RULES,
   SCHEMA_VERSION,
   type DatasetInfo,
+  type EdgeMode,
   type EdgesFile,
   type EvaluationInfo,
+  type FeatureSet,
+  type GraphMethod,
   type Homophily,
   type JsonObject,
+  type LearnedMethod,
   type Metrics,
   type NetEdge,
   type NetNode,
@@ -21,8 +28,12 @@ import {
   type NodesFile,
   type PrCurvePoint,
   type Run,
+  type Scaling,
+  type SearchCandidate,
   type SplitInfo,
   type StepRange,
+  type Training,
+  type TrainingEnvironment,
 } from "./types";
 
 export const MAX_PR_CURVE_POINTS = 101;
@@ -30,6 +41,91 @@ const CONSISTENCY_TOLERANCE = 1e-4;
 const MAX_HOP = 2;
 const ISO_UTC_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+export const ARCHITECTURES: Record<LearnedMethod, string> = {
+  gcn: "GCNConv",
+  graphsage: "SAGEConv(aggr=mean)",
+  mlp: "Linear",
+};
+
+export const EDGE_MODE_BY_METHOD: Record<LearnedMethod, EdgeMode> = {
+  gcn: "undirected",
+  graphsage: "undirected",
+  mlp: "none",
+};
+
+const TRAINING_KEYS = [
+  "architecture",
+  "layers",
+  "hidden",
+  "activation",
+  "dropout",
+  "optimizer",
+  "learningRate",
+  "weightDecay",
+  "loss",
+  "score",
+  "positiveWeight",
+  "positiveWeightRule",
+  "edges",
+  "dtype",
+  "scaling",
+  "features",
+  "maxEpochs",
+  "patience",
+  "selectedEpoch",
+  "selectionMetric",
+  "validationPrAuc",
+  "selectionSteps",
+  "validationSteps",
+  "finalFitSteps",
+  "search",
+  "environment",
+] as const;
+
+const SCALING_KEYS = [
+  "center",
+  "scale",
+  "madScale",
+  "fallback",
+  "clip",
+  "fitOn",
+  "zeroMadFeatures",
+  "unitScaleFeatures",
+] as const;
+
+const SEARCH_KEYS = [
+  "featureSet",
+  "positiveWeightRule",
+  "positiveWeight",
+  "validationPrAuc",
+  "bestEpoch",
+  "stoppedEpoch",
+  "selected",
+] as const;
+
+const ENVIRONMENT_KEYS = ["torch", "torchGeometric", "python", "platform", "threads", "deterministicAlgorithms"] as const;
+
+export const FIXED_TRAINING = {
+  layers: 2,
+  hidden: 64,
+  activation: "relu",
+  dropout: 0.5,
+  optimizer: "adam",
+  learningRate: 0.01,
+  weightDecay: 0.0005,
+  loss: "weightedCrossEntropy",
+  score: "logitIllicit - logitLicit",
+} as const;
+
+export const FIXED_SCALING = {
+  center: "median",
+  scale: "mad",
+  madScale: 1.4826,
+  fallback: ["std", "one"],
+} as const;
+
+export const DTYPES = ["float64", "float32"] as const;
 
 export class NetzRadarSchemaError extends Error {
   readonly path: string;
@@ -72,6 +168,13 @@ function readString(value: unknown, path: string): string {
   return value;
 }
 
+function readStringList(value: unknown, path: string, minLength = 0): string[] {
+  const list = readArray(value, path).map((entry, index) => readString(entry, `${path}[${index}]`));
+  if (list.length < minLength) fail(path, `mindestens ${minLength} Einträge erwartet`);
+  if (new Set(list).size !== list.length) fail(path, "Einträge doppelt");
+  return list;
+}
+
 function readBoolean(value: unknown, path: string): boolean {
   if (typeof value !== "boolean") fail(path, "Wahrheitswert erwartet");
   return value;
@@ -81,6 +184,12 @@ function readNumber(value: unknown, path: string, min = -Infinity, max = Infinit
   if (typeof value !== "number" || !Number.isFinite(value)) fail(path, "endliche Zahl erwartet");
   if (value < min || value > max) fail(path, `Wert ${value} liegt nicht in [${min}, ${max}]`);
   return value;
+}
+
+function readPositive(value: unknown, path: string): number {
+  const number = readNumber(value, path);
+  if (!(number > 0)) fail(path, `Wert ${number} ist nicht positiv`);
+  return number;
 }
 
 function readInteger(value: unknown, path: string, min = 0, max = Number.MAX_SAFE_INTEGER): number {
@@ -115,6 +224,10 @@ function readStepRange(value: unknown, path: string): StepRange {
   const to = readInteger(raw.to, `${path}.to`, 1);
   if (from > to) fail(path, "from liegt nach to");
   return { from, to };
+}
+
+function sameRange(a: StepRange, b: StepRange): boolean {
+  return a.from === b.from && a.to === b.to;
 }
 
 function checkClose(actual: number, expected: number, path: string): void {
@@ -267,6 +380,155 @@ function parsePrCurve(value: unknown, path: string): PrCurvePoint[] {
   return points;
 }
 
+function parseScaling(value: unknown, path: string, features: readonly string[]): Scaling {
+  const raw = readObject(value, path, SCALING_KEYS);
+  const zeroMadFeatures = readStringList(raw.zeroMadFeatures, `${path}.zeroMadFeatures`);
+  const unitScaleFeatures = readStringList(raw.unitScaleFeatures, `${path}.unitScaleFeatures`);
+  for (const [key, names] of [
+    ["zeroMadFeatures", zeroMadFeatures],
+    ["unitScaleFeatures", unitScaleFeatures],
+  ] as const) {
+    names.forEach((name, index) => {
+      if (!features.includes(name)) fail(`${path}.${key}[${index}]`, `Merkmal ${name} fehlt in features`);
+    });
+  }
+  const fallback = readStringList(raw.fallback, `${path}.fallback`);
+  if (fallback.length !== FIXED_SCALING.fallback.length || fallback.some((rule, index) => rule !== FIXED_SCALING.fallback[index])) {
+    fail(`${path}.fallback`, `${JSON.stringify(FIXED_SCALING.fallback)} erwartet`);
+  }
+  return {
+    center: readLiteral(raw.center, FIXED_SCALING.center, `${path}.center`),
+    scale: readLiteral(raw.scale, FIXED_SCALING.scale, `${path}.scale`),
+    madScale: readLiteral(raw.madScale, FIXED_SCALING.madScale, `${path}.madScale`),
+    fallback,
+    clip: readPositive(raw.clip, `${path}.clip`),
+    fitOn: readLiteral(raw.fitOn, "train", `${path}.fitOn`),
+    zeroMadFeatures,
+    unitScaleFeatures,
+  };
+}
+
+function parseCandidate(value: unknown, path: string, maxEpochs: number, patience: number): SearchCandidate {
+  const raw = readObject(value, path, SEARCH_KEYS);
+  const bestEpoch = readInteger(raw.bestEpoch, `${path}.bestEpoch`, 1, maxEpochs);
+  const stoppedEpoch = readInteger(raw.stoppedEpoch, `${path}.stoppedEpoch`, bestEpoch, maxEpochs);
+  const expectedStop = Math.min(bestEpoch + patience, maxEpochs);
+  if (stoppedEpoch !== expectedStop) {
+    fail(`${path}.stoppedEpoch`, `Abbruch in Epoche ${expectedStop} erwartet (Geduld ${patience}, höchstens ${maxEpochs})`);
+  }
+  return {
+    featureSet: readEnum(raw.featureSet, FEATURE_SETS, `${path}.featureSet`),
+    positiveWeightRule: readEnum(raw.positiveWeightRule, POSITIVE_WEIGHT_RULES, `${path}.positiveWeightRule`),
+    positiveWeight: readPositive(raw.positiveWeight, `${path}.positiveWeight`),
+    validationPrAuc: readUnit(raw.validationPrAuc, `${path}.validationPrAuc`),
+    bestEpoch,
+    stoppedEpoch,
+    selected: readBoolean(raw.selected, `${path}.selected`),
+  };
+}
+
+function parseEnvironment(value: unknown, path: string): TrainingEnvironment {
+  const raw = readObject(value, path, ENVIRONMENT_KEYS);
+  return {
+    torch: readString(raw.torch, `${path}.torch`),
+    torchGeometric: readString(raw.torchGeometric, `${path}.torchGeometric`),
+    python: readString(raw.python, `${path}.python`),
+    platform: readString(raw.platform, `${path}.platform`),
+    threads: readInteger(raw.threads, `${path}.threads`, 1),
+    deterministicAlgorithms: readBoolean(raw.deterministicAlgorithms, `${path}.deterministicAlgorithms`),
+  };
+}
+
+function parseSteps(raw: RawObject, path: string) {
+  const selectionSteps = readStepRange(raw.selectionSteps, `${path}.selectionSteps`);
+  const validationSteps = readStepRange(raw.validationSteps, `${path}.validationSteps`);
+  const finalFitSteps = readStepRange(raw.finalFitSteps, `${path}.finalFitSteps`);
+  if (selectionSteps.from !== finalFitSteps.from || selectionSteps.to + 1 !== validationSteps.from) {
+    fail(`${path}.selectionSteps`, "Auswahlteil muss direkt vor dem Validierungsteil enden");
+  }
+  if (validationSteps.to !== finalFitSteps.to) {
+    fail(`${path}.validationSteps`, "Validierungsteil muss am Ende des Trainingszeitraums liegen");
+  }
+  return { selectionSteps, validationSteps, finalFitSteps };
+}
+
+function parseSearch(
+  value: unknown,
+  path: string,
+  maxEpochs: number,
+  patience: number,
+): { search: SearchCandidate[]; selected: SearchCandidate } {
+  const search = readArray(value, path).map((entry, index) =>
+    parseCandidate(entry, `${path}[${index}]`, maxEpochs, patience),
+  );
+  if (search.length === 0) fail(path, "mindestens ein Kandidat erwartet");
+  const pairs = new Set<string>();
+  search.forEach((candidate, index) => {
+    const pair = `${candidate.featureSet} ${candidate.positiveWeightRule}`;
+    if (pairs.has(pair)) fail(`${path}[${index}]`, `Kandidat ${pair} doppelt`);
+    pairs.add(pair);
+  });
+  const selectedIndices = search.flatMap((candidate, index) => (candidate.selected ? [index] : []));
+  if (selectedIndices.length !== 1) fail(path, `genau ein gewählter Kandidat erwartet, gefunden ${selectedIndices.length}`);
+  const selectedIndex = selectedIndices[0] ?? 0;
+  const selected = search[selectedIndex];
+  if (!selected) fail(path, "gewählter Kandidat fehlt");
+  search.forEach((candidate, index) => {
+    if (candidate.validationPrAuc > selected.validationPrAuc) {
+      fail(`${path}[${index}].validationPrAuc`, "höher als beim gewählten Kandidaten");
+    }
+    if (index < selectedIndex && candidate.validationPrAuc === selected.validationPrAuc) {
+      fail(`${path}[${index}].validationPrAuc`, "gleich hoch wie beim gewählten Kandidaten; bei Gleichstand gilt der frühere");
+    }
+  });
+  return { search, selected };
+}
+
+function parseTraining(value: unknown, path: string, method: LearnedMethod, featureSet: FeatureSet): Training {
+  const raw = readObject(value, path, TRAINING_KEYS);
+  const features = readStringList(raw.features, `${path}.features`, 1);
+  const maxEpochs = readInteger(raw.maxEpochs, `${path}.maxEpochs`, 1);
+  const patience = readInteger(raw.patience, `${path}.patience`, 1);
+  const selectedEpoch = readInteger(raw.selectedEpoch, `${path}.selectedEpoch`, 1, maxEpochs);
+  const validationPrAuc = readUnit(raw.validationPrAuc, `${path}.validationPrAuc`);
+  const positiveWeight = readPositive(raw.positiveWeight, `${path}.positiveWeight`);
+  const positiveWeightRule = readEnum(raw.positiveWeightRule, POSITIVE_WEIGHT_RULES, `${path}.positiveWeightRule`);
+  const { search, selected } = parseSearch(raw.search, `${path}.search`, maxEpochs, patience);
+  if (selected.featureSet !== featureSet) fail(`${path}.search`, "gewählter Merkmalssatz passt nicht zu featureSet");
+  if (selected.positiveWeightRule !== positiveWeightRule) {
+    fail(`${path}.search`, "Gewichtsregel des gewählten Kandidaten passt nicht zu positiveWeightRule");
+  }
+  if (selected.bestEpoch !== selectedEpoch) fail(`${path}.selectedEpoch`, "passt nicht zur besten Epoche des gewählten Kandidaten");
+  checkClose(validationPrAuc, selected.validationPrAuc, `${path}.validationPrAuc`);
+  if (positiveWeightRule === "fixed") checkClose(positiveWeight, selected.positiveWeight, `${path}.positiveWeight`);
+  return {
+    architecture: readLiteral(raw.architecture, ARCHITECTURES[method], `${path}.architecture`),
+    layers: readLiteral(raw.layers, FIXED_TRAINING.layers, `${path}.layers`),
+    hidden: readLiteral(raw.hidden, FIXED_TRAINING.hidden, `${path}.hidden`),
+    activation: readLiteral(raw.activation, FIXED_TRAINING.activation, `${path}.activation`),
+    dropout: readLiteral(raw.dropout, FIXED_TRAINING.dropout, `${path}.dropout`),
+    optimizer: readLiteral(raw.optimizer, FIXED_TRAINING.optimizer, `${path}.optimizer`),
+    learningRate: readLiteral(raw.learningRate, FIXED_TRAINING.learningRate, `${path}.learningRate`),
+    weightDecay: readLiteral(raw.weightDecay, FIXED_TRAINING.weightDecay, `${path}.weightDecay`),
+    loss: readLiteral(raw.loss, FIXED_TRAINING.loss, `${path}.loss`),
+    score: readLiteral(raw.score, FIXED_TRAINING.score, `${path}.score`),
+    positiveWeight,
+    positiveWeightRule,
+    edges: readLiteral(readEnum(raw.edges, EDGE_MODES, `${path}.edges`), EDGE_MODE_BY_METHOD[method], `${path}.edges`),
+    dtype: readEnum(raw.dtype, DTYPES, `${path}.dtype`),
+    scaling: parseScaling(raw.scaling, `${path}.scaling`, features),
+    features,
+    maxEpochs,
+    patience,
+    selectedEpoch,
+    selectionMetric: readLiteral(raw.selectionMetric, "validationPrAuc", `${path}.selectionMetric`),
+    validationPrAuc,
+    ...parseSteps(raw, path),
+    search,
+    environment: parseEnvironment(raw.environment, `${path}.environment`),
+  };
+}
+
 function parseRun(value: unknown, path: string): Run {
   const raw = readObject(value, path, [
     "method",
@@ -284,6 +546,8 @@ function parseRun(value: unknown, path: string): Run {
     "accuracyTruePositives",
     "prCurve",
   ]);
+  const method = readEnum(raw.method, METHODS, `${path}.method`);
+  const featureSet = readEnum(raw.featureSet, FEATURE_SETS, `${path}.featureSet`);
   const date = readString(raw.date, `${path}.date`);
   if (!DATE_PATTERN.test(date)) fail(`${path}.date`, "Datum im Format JJJJ-MM-TT erwartet");
   const accuracyFlagged = readInteger(raw.accuracyFlagged, `${path}.accuracyFlagged`, 1);
@@ -291,13 +555,17 @@ function parseRun(value: unknown, path: string): Run {
   if (accuracyTruePositives > accuracyFlagged) {
     fail(`${path}.accuracyTruePositives`, "mehr Treffer als markierte Knoten");
   }
+  const hyperparameters = readJsonObject(raw.hyperparameters, `${path}.hyperparameters`);
   return {
-    method: readEnum(raw.method, METHODS, `${path}.method`),
+    method,
     displayName: readString(raw.displayName, `${path}.displayName`),
-    featureSet: readEnum(raw.featureSet, FEATURE_SETS, `${path}.featureSet`),
+    featureSet,
     seed: readInteger(raw.seed, `${path}.seed`),
     date,
-    hyperparameters: readJsonObject(raw.hyperparameters, `${path}.hyperparameters`),
+    hyperparameters,
+    training: isLearnedMethod(method)
+      ? parseTraining(hyperparameters, `${path}.hyperparameters`, method, featureSet)
+      : null,
     prAuc: readUnit(raw.prAuc, `${path}.prAuc`),
     precisionAtRecall50: readUnit(raw.precisionAtRecall50, `${path}.precisionAtRecall50`),
     recallAtPrecision50: readUnit(raw.recallAtPrecision50, `${path}.recallAtPrecision50`),
@@ -309,6 +577,22 @@ function parseRun(value: unknown, path: string): Run {
   };
 }
 
+function checkTrainingAgainstData(run: Run, path: string, split: SplitInfo, dataset: DatasetInfo): void {
+  const { training } = run;
+  if (training === null) return;
+  const trainingPath = `${path}.hyperparameters`;
+  if (!sameRange(training.finalFitSteps, split.train)) {
+    fail(`${trainingPath}.finalFitSteps`, "Endmodell muss auf dem Trainingszeitraum des Splits angepasst sein");
+  }
+  if (!sameRange(training.validationSteps, split.validation)) {
+    fail(`${trainingPath}.validationSteps`, "Auswahl muss auf dem Validierungsteil des Splits liegen");
+  }
+  const localOnly = run.featureSet === "local";
+  if (localOnly ? training.features.length !== dataset.features : training.features.length <= dataset.features) {
+    fail(`${trainingPath}.features`, `Merkmalszahl passt nicht zu featureSet ${run.featureSet}`);
+  }
+}
+
 export function parseMetrics(value: unknown): Metrics {
   const path = "metrics";
   const raw = readObject(value, path, ["schemaVersion", "generatedAt", "dataset", "split", "evaluation", "seed", "runs"]);
@@ -316,14 +600,18 @@ export function parseMetrics(value: unknown): Metrics {
   if (!ISO_UTC_PATTERN.test(generatedAt) || Number.isNaN(Date.parse(generatedAt))) {
     fail(`${path}.generatedAt`, "Zeitpunkt im Format ISO 8601 (UTC) erwartet");
   }
+  const schemaVersion = readLiteral(raw.schemaVersion, SCHEMA_VERSION, `${path}.schemaVersion`);
   const runs = readArray(raw.runs, `${path}.runs`).map((entry, index) => parseRun(entry, `${path}.runs[${index}]`));
   if (runs.length === 0) fail(`${path}.runs`, "mindestens ein Lauf erwartet");
   const methods = new Set<string>();
   runs.forEach((run, index) => {
     if (methods.has(run.method)) fail(`${path}.runs[${index}].method`, `Verfahren ${run.method} doppelt`);
     methods.add(run.method);
+    const previous = runs[index - 1];
+    if (previous && METHODS.indexOf(previous.method) > METHODS.indexOf(run.method)) {
+      fail(`${path}.runs[${index}].method`, `Reihenfolge ${METHODS.join(", ")} erwartet`);
+    }
   });
-  const schemaVersion = readLiteral(raw.schemaVersion, SCHEMA_VERSION, `${path}.schemaVersion`);
   const evaluation = parseEvaluation(raw.evaluation, `${path}.evaluation`);
   const labelled = evaluation.testPositives + evaluation.testNegatives;
   runs.forEach((run, index) => {
@@ -334,11 +622,14 @@ export function parseMetrics(value: unknown): Metrics {
       fail(`${path}.runs[${index}].accuracyTruePositives`, "mehr Treffer als auffällige Testknoten");
     }
   });
+  const dataset = parseDataset(raw.dataset, `${path}.dataset`);
+  const split = parseSplit(raw.split, `${path}.split`);
+  runs.forEach((run, index) => checkTrainingAgainstData(run, `${path}.runs[${index}]`, split, dataset));
   return {
     schemaVersion,
     generatedAt,
-    dataset: parseDataset(raw.dataset, `${path}.dataset`),
-    split: parseSplit(raw.split, `${path}.split`),
+    dataset,
+    split,
     evaluation,
     seed: readInteger(raw.seed, `${path}.seed`),
     runs,
@@ -357,7 +648,12 @@ function parseSelection(value: unknown, path: string): NodeSelection {
   };
 }
 
-function parseNode(value: unknown, path: string, selection: NodeSelection): NetNode {
+function parseNode(
+  value: unknown,
+  path: string,
+  selection: NodeSelection,
+  scoreGnnMethod: GraphMethod | null,
+): NetNode {
   const raw = readObject(value, path, [
     "id",
     "x",
@@ -376,13 +672,19 @@ function parseNode(value: unknown, path: string, selection: NodeSelection): NetN
   if (hop > selection.hops) fail(`${path}.hop`, `Abstand größer als ${selection.hops}`);
   const seedRank = raw.seedRank === null ? null : readInteger(raw.seedRank, `${path}.seedRank`, 1, selection.seeds);
   if ((seedRank === null) !== (hop !== 0)) fail(`${path}.seedRank`, "Startknoten und Abstand 0 passen nicht zusammen");
+  if (scoreGnnMethod === null && raw.scoreGnn !== null) {
+    fail(`${path}.scoreGnn`, "null erwartet, weil scoreGnnMethod null ist");
+  }
+  if (scoreGnnMethod !== null && raw.scoreGnn === null) {
+    fail(`${path}.scoreGnn`, `Zahl erwartet, weil scoreGnnMethod ${scoreGnnMethod} ist`);
+  }
   return {
     id: readString(raw.id, `${path}.id`),
     x: readNumber(raw.x, `${path}.x`, -1, 1),
     y: readNumber(raw.y, `${path}.y`, -1, 1),
     label: readEnum(raw.label, NODE_LABELS, `${path}.label`),
     timeStep: readInteger(raw.timeStep, `${path}.timeStep`, 1),
-    scoreZscore: readNumber(raw.scoreZscore, `${path}.scoreZscore`),
+    scoreZscore: readNumber(raw.scoreZscore, `${path}.scoreZscore`, 0),
     scoreIforest: readNumber(raw.scoreIforest, `${path}.scoreIforest`),
     scoreGnn: raw.scoreGnn === null ? null : readNumber(raw.scoreGnn, `${path}.scoreGnn`),
     seedRank,
@@ -394,13 +696,16 @@ function parseNode(value: unknown, path: string, selection: NodeSelection): NetN
 
 export function parseNodes(value: unknown): NodesFile {
   const path = "nodes";
-  const raw = readObject(value, path, ["schemaVersion", "selection", "nodes"]);
+  const raw = readObject(value, path, ["schemaVersion", "selection", "scoreGnnMethod", "nodes"]);
+  const schemaVersion = readLiteral(raw.schemaVersion, SCHEMA_VERSION, `${path}.schemaVersion`);
   const selection = parseSelection(raw.selection, `${path}.selection`);
+  const scoreGnnMethod =
+    raw.scoreGnnMethod === null ? null : readEnum(raw.scoreGnnMethod, GRAPH_METHODS, `${path}.scoreGnnMethod`);
   const entries = readArray(raw.nodes, `${path}.nodes`);
   if (entries.length === 0 || entries.length > selection.maxNodes) {
     fail(`${path}.nodes`, `1 bis ${selection.maxNodes} Knoten erwartet, gefunden ${entries.length}`);
   }
-  const nodes = entries.map((entry, index) => parseNode(entry, `${path}.nodes[${index}]`, selection));
+  const nodes = entries.map((entry, index) => parseNode(entry, `${path}.nodes[${index}]`, selection, scoreGnnMethod));
   const ids = new Set<string>();
   const ranks = new Set<number>();
   nodes.forEach((node, index) => {
@@ -415,7 +720,7 @@ export function parseNodes(value: unknown): NodesFile {
   if (Math.max(...ranks) !== ranks.size) {
     fail(`${path}.nodes`, `Startknoten-Ränge müssen lückenlos 1 bis ${ranks.size} sein`);
   }
-  return { schemaVersion: readLiteral(raw.schemaVersion, SCHEMA_VERSION, `${path}.schemaVersion`), selection, nodes };
+  return { schemaVersion, selection, scoreGnnMethod, nodes };
 }
 
 export function parseEdges(value: unknown, nodeIds: ReadonlySet<string>): EdgesFile {
@@ -454,6 +759,13 @@ export function parseNetzRadarData(input: { metrics: unknown; nodes: unknown; ed
       fail(`nodes.nodes[${index}].timeStep`, `Zeitschritt ${node.timeStep} liegt außerhalb des Testzeitraums`);
     }
   });
+  const expectedMethod = expectedScoreGnnMethod(metrics.runs);
+  if (nodes.scoreGnnMethod !== expectedMethod) {
+    fail(
+      "nodes.scoreGnnMethod",
+      `${JSON.stringify(expectedMethod)} erwartet: das Graph-Verfahren mit der höheren Validierungs-PR-AUC, bei Gleichstand gcn`,
+    );
+  }
   return { metrics, nodes, edges };
 }
 

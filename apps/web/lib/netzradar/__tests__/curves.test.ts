@@ -1,56 +1,33 @@
 import { describe, expect, it } from "vitest";
+import { CHART_COLORS } from "@portfolio/charts/theme";
 import { METHOD_CURVE_STYLES, PREVALENCE_LEVEL_STYLE, curveSeries, prevalenceLevel } from "../curves";
-import type { EvaluationInfo, Run } from "../types";
-
-const EVALUATION: EvaluationInfo = {
-  positiveLabel: "illicit",
-  excludedLabel: "unknown",
-  testPositives: 95,
-  testNegatives: 757,
-  prevalence: 0.1115,
-  allLicitAccuracy: 0.8885,
-  randomPrAucExpected: 0.1181,
-  randomPrAucQ95: 0.142,
-  randomPermutations: 10000,
-};
+import { METHODS, type Run } from "../types";
+import { EVALUATION, run } from "./fixtures";
 
 const RUNS: Run[] = [
-  {
-    method: "zscore",
+  run("zscore", 0.1633, {
     displayName: "Robuste Z-Scores (Einzelmerkmale)",
-    featureSet: "local",
-    seed: 42,
-    date: "2026-10-06",
-    hyperparameters: {},
-    prAuc: 0.1633,
-    precisionAtRecall50: 0.1324,
-    recallAtPrecision50: 0.0211,
-    accuracy: 0.8744,
-    accuracyThreshold: "oberste 2 %",
-    accuracyFlagged: 22,
-    accuracyTruePositives: 5,
     prCurve: [
       { recall: 0.0211, precision: 1 },
       { recall: 1, precision: 0.1115 },
     ],
-  },
-  {
-    method: "iforest",
+  }),
+  run("iforest", 0.1281, {
     displayName: "Isolation Forest (Einzelmerkmale + Graphmaße)",
     featureSet: "local+graph",
-    seed: 42,
-    date: "2026-10-06",
-    hyperparameters: {},
-    prAuc: 0.1281,
-    precisionAtRecall50: 0.134,
-    recallAtPrecision50: 0,
-    accuracy: 0.8744,
-    accuracyThreshold: "oberste 2 %",
-    accuracyFlagged: 18,
-    accuracyTruePositives: 3,
     prCurve: [{ recall: 1, precision: 0.1115 }],
-  },
+  }),
 ];
+
+const ALL_RUNS: Run[] = METHODS.map((method, index) => run(method, 0.1 * (index + 1)));
+
+function isBluish(hex: string): boolean {
+  const value = Number.parseInt(hex.slice(1), 16);
+  const red = (value >> 16) & 0xff;
+  const green = (value >> 8) & 0xff;
+  const blue = value & 0xff;
+  return blue > red && blue >= green;
+}
 
 describe("curveSeries", () => {
   it("draws Z-Scores in gold and the Isolation Forest in wine with distinct dashes", () => {
@@ -62,9 +39,33 @@ describe("curveSeries", () => {
     expect(series[0]?.points).toBe(RUNS[0]?.prCurve);
   });
 
+  it("draws all five methods with the styles of the contract", () => {
+    expect(curveSeries(ALL_RUNS).map((entry) => [entry.name, entry.color, entry.dash])).toEqual([
+      ["Robuste Z-Scores", "#b8912f", ""],
+      ["Isolation Forest", "#7a1f2b", "8 3"],
+      ["GCN (Graph Convolutional Network)", "#2f6b3a", "2 3"],
+      ["GraphSAGE", "#111111", "8 3 2 3"],
+      ["MLP ohne Kanten (Kontrolle)", "#6b6b66", "12 4"],
+    ]);
+  });
+
   it("gives every method its own dash pattern", () => {
     const dashes = Object.values(METHOD_CURVE_STYLES).map((style) => style.dash);
+    expect(dashes).toHaveLength(METHODS.length);
     expect(new Set([...dashes, PREVALENCE_LEVEL_STYLE.dash]).size).toBe(dashes.length + 1);
+  });
+
+  it("uses only palette colours and no blue", () => {
+    const palette = new Set<string>(Object.values(CHART_COLORS));
+    for (const style of [...Object.values(METHOD_CURVE_STYLES), PREVALENCE_LEVEL_STYLE]) {
+      expect(palette.has(style.color)).toBe(true);
+      expect(isBluish(style.color)).toBe(false);
+    }
+  });
+
+  it("recognises a pure blue channel in the test helper", () => {
+    expect(isBluish(`#${(0xff).toString(16).padStart(6, "0")}`)).toBe(true);
+    expect(isBluish(CHART_COLORS.moss)).toBe(false);
   });
 });
 

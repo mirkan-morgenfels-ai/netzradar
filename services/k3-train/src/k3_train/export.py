@@ -7,6 +7,7 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
+from k3_train.gnn_results import GnnOutput, check_compatible, score_column, score_gnn_method
 from k3_train.jsonio import FLOAT_DIGITS, round_floats, write_json
 from k3_train.load import Dataset
 from k3_train.pipeline import SCHEMA_VERSION, BaselineOutput, metrics_payload
@@ -150,11 +151,18 @@ def nodes_payload(
     seed_count: int = SEED_COUNT,
     hops: int = HOPS,
     max_nodes: int = MAX_NODES,
+    gnn: GnnOutput | None = None,
 ) -> tuple[dict[str, Any], set[str]]:
     nodes = dataset.nodes
     test_mask = split_masks(nodes, split)["test"]
     pool_ids = nodes.loc[test_mask, "node_id"].tolist()
     scores = output.scores.set_index("node_id")
+    gnn_method = None if gnn is None else score_gnn_method(gnn.runs)
+    gnn_scores = (
+        None
+        if gnn is None or gnn_method is None
+        else gnn.scores.set_index("node_id")[score_column(gnn_method)]
+    )
     iforest = scores["score_iforest"].to_dict()
     selection = select_neighbourhood(pool_ids, iforest, dataset.edges, seed_count, hops, max_nodes)
     selected_ids = set(selection.nodes["node_id"])
@@ -175,7 +183,7 @@ def nodes_payload(
                 "timeStep": int(info.at[node, "time_step"]),
                 "scoreZscore": float(scores.at[node, "score_zscore"]),
                 "scoreIforest": float(scores.at[node, "score_iforest"]),
-                "scoreGnn": None,
+                "scoreGnn": None if gnn_scores is None else float(gnn_scores.at[node]),
                 "seedRank": None if pd.isna(row.seed_rank) else int(row.seed_rank),
                 "hop": int(row.hop),
                 "inDegree": int(measures.at[node, "g_in_degree"]),
@@ -192,6 +200,7 @@ def nodes_payload(
             "maxNodes": max_nodes,
             "truncated": selection.truncated,
         },
+        "scoreGnnMethod": gnn_method,
         "nodes": entries,
     }
     return payload, selected_ids
@@ -215,13 +224,17 @@ def build_exports(
     seed_count: int = SEED_COUNT,
     hops: int = HOPS,
     max_nodes: int = MAX_NODES,
+    gnn: GnnOutput | None = None,
 ) -> ExportBundle:
+    if gnn is not None:
+        check_compatible(output, gnn)
     split = split_for(dataset.name, dataset.time_steps)
     nodes, selected = nodes_payload(
-        dataset, output, split, output.seed, seed_count, hops, max_nodes
+        dataset, output, split, output.seed, seed_count, hops, max_nodes, gnn
     )
+    extra_runs = [] if gnn is None else gnn.runs
     return ExportBundle(
-        metrics=round_floats(metrics_payload(output, generated_at)),
+        metrics=round_floats(metrics_payload(output, generated_at, extra_runs)),
         nodes=round_floats(nodes),
         edges=edges_payload(dataset.edges, selected),
     )

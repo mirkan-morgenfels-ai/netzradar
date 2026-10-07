@@ -6,6 +6,7 @@ from pathlib import Path
 
 from k3_train.datasets import DATASET_NAMES, dataset_info
 from k3_train.export import build_exports, write_exports
+from k3_train.gnn_results import GnnOutput, has_gnn, load_gnn, save_gnn
 from k3_train.load import (
     Dataset,
     load_elliptic,
@@ -37,8 +38,12 @@ from k3_train.pipeline import (
 )
 from k3_train.runs import write_run_logs
 from k3_train.synth import SynthConfig
-from k3_train.verify import verify
+from k3_train.verify import GNN_MODULES, verify
 
+MISSING_GNN_MESSAGE = (
+    "Für k3-train gnn fehlen torch und torch_geometric. Bitte das Extra installieren: "
+    "uv sync --extra gnn, dann uv run --extra gnn k3-train gnn (mit make: make gnn)."
+)
 NO_DATASET_MESSAGE = (
     "Kein Datensatz gewählt.\n"
     "  Synthetisches Netz: make data SYNTH=1 (oder k3-train data --synth)\n"
@@ -106,6 +111,28 @@ def _print_baseline(output: BaselineOutput) -> None:
         )
 
 
+def _print_gnn(output: GnnOutput) -> None:
+    for run in output.runs:
+        hyperparameters = run["hyperparameters"]
+        spread = output.seed_spread[run["method"]]
+        print(
+            f"  {run['method']:9s} Merkmale {run['featureSet']}, "
+            f"Gewicht {hyperparameters['positiveWeight']:.4f} "
+            f"({hyperparameters['positiveWeightRule']}), "
+            f"Epoche {hyperparameters['selectedEpoch']}, "
+            f"Validierung PR-AUC {hyperparameters['validationPrAuc']:.4f}"
+        )
+        print(
+            f"            Test PR-AUC {run['prAuc']:.4f}  "
+            f"P@R0.5 {run['precisionAtRecall50']:.4f}  "
+            f"R@P0.5 {run['recallAtPrecision50']:.4f}  "
+            f"Accuracy {run['accuracy']:.4f} "
+            f"({run['accuracyFlagged']} markiert, {run['accuracyTruePositives']} Treffer); "
+            f"Seeds {spread['seeds'][0]}-{spread['seeds'][-1]}: "
+            f"PR-AUC {spread['min']:.4f} bis {spread['max']:.4f}, Mittel {spread['mean']:.4f}"
+        )
+
+
 def command_data(args: argparse.Namespace) -> int:
     name = "synthetic" if args.synth else args.dataset
     if name is None:
@@ -148,6 +175,40 @@ def command_baseline(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_gnn(args: argparse.Namespace) -> int:
+    try:
+        from k3_train.gnn import GnnConfig
+        from k3_train.gnn_pipeline import run_gnn
+    except ModuleNotFoundError as error:
+        if error.name not in GNN_MODULES:
+            raise
+        print(MISSING_GNN_MESSAGE, file=sys.stderr)
+        return 2
+    info = dataset_info(args.dataset)
+    if info.publishable:
+        check_repo_layout()
+    root = data_root(args.data_dir)
+    target = processed_dir(root, args.dataset)
+    dataset = read_processed(target)
+    baseline = load_baseline(target)
+    if baseline.dataset != dataset_block(dataset):
+        print(
+            "Die Baseline-Ergebnisse passen nicht zu den aufbereiteten Daten. "
+            "Bitte zuerst k3-train baseline ausführen.",
+            file=sys.stderr,
+        )
+        return 1
+    config = GnnConfig() if args.max_epochs is None else GnnConfig(max_epochs=args.max_epochs)
+    output = run_gnn(dataset, baseline.measures, run_date=iso_date(utc_now()), config=config)
+    save_gnn(output, target)
+    runs_dir = RUNS_DIR if info.publishable else private_runs_dir(root, args.dataset)
+    paths = write_run_logs(output, runs_dir)
+    _print_gnn(output)
+    for path in paths:
+        print(f"Protokoll: {path}")
+    return 0
+
+
 def command_export(args: argparse.Namespace) -> int:
     info = dataset_info(args.dataset)
     if not info.publishable:
@@ -168,12 +229,18 @@ def command_export(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
-    bundle = build_exports(dataset, output, generated_at=iso_timestamp(utc_now()))
+    gnn = None
+    if has_gnn(processed_dir(root, args.dataset)):
+        gnn = load_gnn(processed_dir(root, args.dataset))
+    else:
+        print("Hinweis: keine GNN-Ergebnisse gefunden, scoreGnn bleibt leer (k3-train gnn).")
+    bundle = build_exports(dataset, output, generated_at=iso_timestamp(utc_now()), gnn=gnn)
     paths = write_exports(bundle, EXPORT_DIR)
     selection = bundle.nodes["selection"]
     print(
         f"Ausschnitt: {len(bundle.nodes['nodes'])} Knoten, {len(bundle.edges['edges'])} Kanten, "
-        f"gekürzt: {'ja' if selection['truncated'] else 'nein'}"
+        f"gekürzt: {'ja' if selection['truncated'] else 'nein'}, "
+        f"scoreGnn aus: {bundle.nodes['scoreGnnMethod'] or 'keinem Verfahren'}"
     )
     for path in paths:
         print(f"Geschrieben: {path}")
@@ -188,7 +255,7 @@ def command_verify(_: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="k3-train",
-        description="NetzRadar: Daten aufbereiten, Baseline rechnen, Ergebnisse exportieren",
+        description="NetzRadar: Daten aufbereiten, Baseline und GNN rechnen, exportieren",
     )
     commands = parser.add_subparsers(dest="command", required=True)
 
@@ -207,6 +274,18 @@ def build_parser() -> argparse.ArgumentParser:
         sub.add_argument("--dataset", choices=DATASET_NAMES, default="synthetic")
         sub.add_argument("--data-dir", help=DATA_DIR_HELP)
         sub.set_defaults(handler=handler)
+
+    gnn = commands.add_parser(
+        "gnn", help="GCN, GraphSAGE und MLP-Kontrolle trainieren (braucht das Extra gnn)"
+    )
+    gnn.add_argument("--dataset", choices=DATASET_NAMES, default="synthetic")
+    gnn.add_argument("--data-dir", help=DATA_DIR_HELP)
+    gnn.add_argument(
+        "--max-epochs",
+        type=int,
+        help="höchstens so viele Epochen je Training (Standard 300); nur zum Testen",
+    )
+    gnn.set_defaults(handler=command_gnn)
 
     check = commands.add_parser("verify", help="synthetische Pipeline nachrechnen und vergleichen")
     check.set_defaults(handler=command_verify)

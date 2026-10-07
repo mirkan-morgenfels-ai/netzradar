@@ -9,6 +9,7 @@ export interface NodeDetailProps {
   node: NetNode | null;
   neighbors: readonly NetNode[];
   seedCount: number;
+  gnnLabel: string | null;
   onSelect: (id: string | null) => void;
 }
 
@@ -21,7 +22,7 @@ function Row({ term, children }: { term: string; children: ReactNode }) {
   );
 }
 
-export function NodeDetail({ node, neighbors, seedCount, onSelect }: NodeDetailProps) {
+export function NodeDetail({ node, neighbors, seedCount, gnnLabel, onSelect }: NodeDetailProps) {
   const titleRef = useRef<HTMLHeadingElement>(null);
   const focusTitle = useRef(false);
 
@@ -51,7 +52,7 @@ export function NodeDetail({ node, neighbors, seedCount, onSelect }: NodeDetailP
       {node === null ? (
         <p className="mt-3 text-stone">
           Wählen Sie einen Knoten in der Graph-Ansicht oder in der Tabelle der Startknoten aus. Angezeigt werden dann
-          Label, Zeitschritt, beide Scores, Grade und Nachbarn.
+          Label, Zeitschritt, die Scores der Verfahren, Grade und Nachbarn.
         </p>
       ) : (
         <>
@@ -70,11 +71,11 @@ export function NodeDetail({ node, neighbors, seedCount, onSelect }: NodeDetailP
             <Row term="Zeitschritt">{node.timeStep}</Row>
             <Row term="Score Isolation Forest">{formatDecimal(node.scoreIforest)}</Row>
             <Row term="Score robuste Z-Scores">{formatDecimal(node.scoreZscore)}</Row>
-            <Row term="Score GNN">
+            <Row term={gnnLabel === null ? "Score GNN" : `Score GNN (${gnnLabel})`}>
               {node.scoreGnn === null ? (
                 <span className="text-stone">Schritt 4, noch nicht berechnet</span>
               ) : (
-                formatDecimal(node.scoreGnn)
+                <span data-testid="node-detail-gnn">{formatDecimal(node.scoreGnn)}</span>
               )}
             </Row>
             <Row term="Eingangsgrad / Ausgangsgrad">
@@ -89,6 +90,12 @@ export function NodeDetail({ node, neighbors, seedCount, onSelect }: NodeDetailP
             </Row>
             <Row term="Kanten bis zum nächsten Startknoten">{node.hop}</Row>
           </dl>
+          {node.scoreGnn === null ? null : (
+            <p className="mt-2 text-xs text-stone">
+              Der GNN-Score ist die Differenz der beiden Ausgaben des Netzes (Logit auffällig minus Logit unauffällig),
+              keine Wahrscheinlichkeit. Höher heißt auffälliger.
+            </p>
+          )}
           <div className="mt-4 border-t border-line pt-3">
             <h4 className="text-xs uppercase tracking-wide text-stone">
               Nachbarn im Ausschnitt ({formatInteger(neighbors.length)})

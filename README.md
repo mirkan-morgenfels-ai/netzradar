@@ -7,7 +7,7 @@ Anomalie-Erkennung in Transaktionsnetzwerken: klassische Baseline gegen Graph Ne
 
 Live-Demo: [Platzhalter: noch nicht deployt. Geplant ist ein Vercel-Projekt mit Root `apps/web`, Seite unter `/projects/netzradar`.]
 
-**English summary.** NetzRadar is a reproducible case study in graph-based fraud and anti-money-laundering detection. It compares a classical baseline (robust z-scores, Isolation Forest with graph centrality features) with Graph Neural Networks (GCN and GraphSAGE in PyTorch Geometric) on a transaction network, using a strict temporal train/test split and precision-recall metrics suited to a rare positive class. Models are trained offline; the web page renders precomputed results (an interactive subgraph around the top anomalies plus a metrics table) from static JSON, with no model and no API call at runtime. Status on 6 October 2026: data preparation, temporal split, baseline and export run on a synthetic transaction network with planted laundering patterns. On its test period the robust z-scores (PR-AUC 0.1633) lie above the 95th percentile of 10,000 random rankings (0.1420), while the Isolation Forest (0.1281) cannot be told apart from a random ranking (expected PR-AUC 0.1181; a constant score reaches the prevalence of 0.1115). The GNN models have not been trained yet. Raw datasets are not redistributed; see the dataset section for licences.
+**English summary.** NetzRadar is a reproducible case study in graph-based fraud and anti-money-laundering detection. It compares a classical baseline (robust z-scores, Isolation Forest with graph centrality features) with Graph Neural Networks (GCN and GraphSAGE in PyTorch Geometric) on a transaction network, using a strict temporal train/test split and precision-recall metrics suited to a rare positive class. Models are trained offline; the web page renders precomputed results (an interactive subgraph around the top anomalies plus a metrics table) from static JSON, with no model and no API call at runtime. Status on 7 October 2026: data preparation, temporal split, baselines, GNNs and export run on a synthetic transaction network with planted laundering patterns. On its test period GraphSAGE reaches a PR-AUC of 0.8941 and GCN 0.7897, against 0.1633 for the robust z-scores and 0.1281 for the Isolation Forest (expected PR-AUC of a random ranking 0.1181, 95th percentile 0.1420). A control MLP of the same size, trained on the same labels and selected by the same procedure but without edges, reaches 0.3765. Its distance to the baselines mixes supervision, the change of model and the four graph features; GCN and GraphSAGE add 0.41 and 0.52 on top of the MLP, so most of the gain on this network comes from the neighbourhood. The synthetic network is strongly homophilous (97.6 % of the edges between two labelled nodes join equal labels), so part of that advantage is built into the generator; the numbers say nothing about real transaction data. Raw datasets are not redistributed; see the dataset section for licences.
 
 ## Fragestellung
 
@@ -15,7 +15,7 @@ Betrug und Geldwäsche sind Netzwerkphänomene. Ein Konto mit unauffälligen eig
 
 ## Ergebnisse
 
-Datensatz: synthetisches Transaktionsnetz aus dem eigenen Generator (MIT, Seed 42) mit 12.000 Knoten, 13.757 gerichteten Kanten, 30 Zeitschritten und 12 lokalen Merkmalen. Split: zeitlich, Training auf den Zeitschritten 1 bis 21 (Validierungsteil 18 bis 21 innerhalb des Trainings), Test auf 22 bis 30, 0 Kanten zwischen Trainings- und Testknoten. Seed: 42. Stand: 06.10.2026.
+Datensatz: synthetisches Transaktionsnetz aus dem eigenen Generator (MIT, Seed 42) mit 12.000 Knoten, 13.757 gerichteten Kanten, 30 Zeitschritten und 12 lokalen Merkmalen. Split: zeitlich, Training auf den Zeitschritten 1 bis 21 (Validierungsteil 18 bis 21 innerhalb des Trainings), Test auf 22 bis 30, 0 Kanten zwischen Trainings- und Testknoten. Seed: 42. Stand: Läufe vom 06.10.2026 (UTC, `date` in `metrics.json`).
 
 Bewertet werden nur gelabelte Testknoten: 95 illicit und 757 licit; `unknown` ist ausgeschlossen. Die Prävalenz beträgt 95 / 852 = 0,1115; so hoch ist die PR-AUC eines konstanten Scores. Eine zufällige Rangfolge erreicht im Erwartungswert etwas mehr, 0,1181, weil die ersten Ränge stark in die Average Precision eingehen. 95 % von 10.000 zufälligen Rangfolgen (Seed 42) bleiben unter 0,1420. Gegen diese Werte sind die Zeilen zu lesen (`evaluation.randomPrAucExpected` und `evaluation.randomPrAucQ95` in `metrics.json`).
 
@@ -23,20 +23,39 @@ Bewertet werden nur gelabelte Testknoten: 95 illicit und 757 licit; `unknown` is
 |---|---|---|---|---|
 | Robuste Z-Scores (Einzelmerkmale) | 12 lokale, davon 10 wirksam | 0,1633 | 0,1324 | 0,0211 |
 | Isolation Forest (Einzelmerkmale + Graphmaße) | 12 lokale + 4 Graphmaße | 0,1281 | 0,1340 | 0,0000 |
-| GCN (2 Schichten) | lokale + Nachbarschaft | Schritt 4, noch nicht gemessen | – | – |
-| GraphSAGE (2 Schichten) | lokale + Nachbarschaft | Schritt 4, noch nicht gemessen | – | – |
+| GCN (2 Schichten) | 12 lokale + 4 Graphmaße, Nachbarschaft bis 2 Hops | 0,7897 | 0,9608 | 0,8316 |
+| GraphSAGE (2 Schichten) | 12 lokale + 4 Graphmaße, Nachbarschaft bis 2 Hops | 0,8941 | 1,0000 | 0,9474 |
+| Kontrolle: MLP ohne Kanten (2 Schichten) | 12 lokale + 4 Graphmaße | 0,3765 | 0,2816 | 0,2211 |
 | Zufällige Rangfolge (Erwartungswert; 95 % unter 0,1420) | – | 0,1181 | – | – |
 | Konstanter Score (Prävalenz) | – | 0,1115 | – | – |
 
 Bei den Z-Scores haben `f_round_amount` und `f_change_output` auf den Trainingsknoten MAD = 0 und tragen nichts bei; wirksam sind 10 der 12 lokalen Merkmale (`hyperparameters.zeroMadFeatures`).
 
+GCN, GraphSAGE und MLP sind überwacht trainiert (Labels der Trainingszeitschritte 1 bis 21), die beiden Baselines nicht. Gewählt wurde je Verfahren nur am Validierungsteil 18 bis 21 (Abschnitt Methodik); alle drei wählten den Merkmalssatz mit Graphmaßen:
+
+| Verfahren | Gewicht der Positivklasse | gewählte Epoche | Validierungs-PR-AUC | Test-PR-AUC über Seeds 42 bis 46 (Spanne, Mittel) |
+|---|---|---|---|---|
+| GCN | 20 (fest) | 140 | 0,7364 | 0,7897 bis 0,8148, Mittel 0,8002 |
+| GraphSAGE | 9,2893 (licit / illicit im Training: 1.830 / 197) | 300 (Obergrenze) | 0,9349 | 0,8689 bis 0,8941, Mittel 0,8842 |
+| MLP ohne Kanten | 20 (fest) | 16 | 0,4970 | 0,3418 bis 0,4010, Mittel 0,3784 |
+
+Berichtet wird Seed 42. Die Spanne über die Seeds 42 bis 46 steht nur in den Laufprotokollen (`hyperparameters.seedSpread` in `docs/runs/*_synthetic_{gcn,graphsage,mlp}.json`); sie zeigt, wie viel der Kennzahl vom Zufall der Initialisierung und der Dropout-Masken abhängt. `scoreGnn` in `data/k3/nodes.json` stammt von GraphSAGE, weil GraphSAGE die höhere Validierungs-PR-AUC hat (`scoreGnnMethod`, verglichen auf 4 Nachkommastellen wie im Export, bei Gleichstand GCN); der Test entscheidet darüber nicht.
+
 Precision bei Recall ≥ 0,5 ist die höchste Precision über alle Schwellen, bei denen mindestens die Hälfte der illicit-Testknoten gefunden wird. Recall bei Precision ≥ 0,5 ist der höchste Recall über alle Schwellen, bei denen mindestens jeder zweite markierte Knoten illicit ist; 0 heißt, dass keine Schwelle das erreicht.
 
-Accuracy als Nebenwert, wenn die obersten 2 % der Test-Scores als auffällig gelten; Gleichstände an der Schwelle zählen mit: beide Verfahren 0,8744. Ein Modell, das alles licit nennt, erreicht 0,8885. Der Isolation Forest markiert 18 Knoten mit 3 Treffern: (852 − 15 − 92) / 852. Die robusten Z-Scores markieren wegen Gleichständen an der Schwelle 22 Knoten mit 5 Treffern: (852 − 17 − 90) / 852. Beides ergibt 745 / 852 = 0,8744 (`accuracyFlagged` und `accuracyTruePositives` in `metrics.json`). Genau deshalb ist Accuracy hier keine Hauptmetrik.
+Accuracy als Nebenwert, wenn die obersten 2 % der Test-Scores als auffällig gelten; Gleichstände an der Schwelle zählen mit: beide Baselines 0,8744. Ein Modell, das alles licit nennt, erreicht 0,8885. Der Isolation Forest markiert 18 Knoten mit 3 Treffern: (852 − 15 − 92) / 852. Die robusten Z-Scores markieren wegen Gleichständen an der Schwelle 22 Knoten mit 5 Treffern: (852 − 17 − 90) / 852. Beides ergibt 745 / 852 = 0,8744 (`accuracyFlagged` und `accuracyTruePositives` in `metrics.json`). GCN und GraphSAGE markieren je 18 Knoten, alle 18 sind illicit: (852 − 0 − 77) / 852 = 775 / 852 = 0,9096. Das MLP markiert 18 mit 12 Treffern: (852 − 6 − 83) / 852 = 763 / 852 = 0,8955. Selbst die fehlerfreie Spitze der GNN liegt damit nur 0,0211 über „alles licit“, weil 2 % von 852 Knoten höchstens 18 der 95 illicit-Knoten erfassen. Genau deshalb ist Accuracy hier keine Hauptmetrik.
 
-**Einordnung.** Die Zahlen sind auf einem synthetischen Netz mit eingebauten Mustern gemessen und sagen nichts über reale Transaktionsdaten aus. Die robusten Z-Scores liegen mit 0,1633 über dem 95-%-Quantil zufälliger Rangfolgen (0,1420) und ordnen auffällige Knoten damit etwas besser als Zufall. Der Isolation Forest liegt mit 0,1281 darunter und ist von einer zufälligen Rangfolge (Erwartungswert 0,1181) nicht zu unterscheiden. Ob das am Verfahren oder an den zusätzlichen Graphmaßen liegt, lässt sich aus diesen zwei Läufen nicht ablesen, weil sich beides gleichzeitig unterscheidet. Von seinen 50 höchsten Testknoten (die Startknoten in `data/k3/nodes.json`) sind 2 illicit, 10 licit und 38 unknown. Ihr Median-Grad (ein- plus ausgehend) liegt bei 13, der mittlere Grad im ganzen Netz bei 2 · 13.757 / 12.000 ≈ 2,29. Der Isolation Forest hält also vor allem stark vernetzte gutartige Knoten für auffällig: Der gutartige Hintergrund des Generators wächst durch Preferential Attachment und bildet Hubs, und Hubs sind strukturelle Ausreißer. Die meisten lokalen Merkmale der Musterknoten sind bewusst nur um 0,5 Standardabweichungen verschoben (`localShift`). Einzelne weichen stärker ab: der größte Ausgangsanteil der Fan-out-Verteiler, die geringere Streuung der Fan-in-Beträge und die doppelte Rate runder Beträge (Einzelheiten in [`docs/daten.md`](docs/daten.md)). Das Signal steckt vor allem in der Netzstruktur (Fan-in, Fan-out, Kreise, Ketten, illicit-Nachbarschaften). Ob GCN und GraphSAGE es nutzen können, misst Schritt 4; ein Vorsprung wäre auf diesem Netz allerdings zum Teil eingebaut (siehe Grenzen). Die Generator-Parameter wurden nach dem ersten Ergebnis nicht nachjustiert.
+**Einordnung.** Die Zahlen sind auf einem synthetischen Netz mit eingebauten Mustern gemessen und sagen nichts über reale Transaktionsdaten aus. Die robusten Z-Scores liegen mit 0,1633 über dem 95-%-Quantil zufälliger Rangfolgen (0,1420) und ordnen auffällige Knoten damit etwas besser als Zufall. Der Isolation Forest liegt mit 0,1281 darunter und ist von einer zufälligen Rangfolge (Erwartungswert 0,1181) nicht zu unterscheiden. Ob das am Verfahren oder an den zusätzlichen Graphmaßen liegt, lässt sich aus diesen zwei Läufen nicht ablesen, weil sich beides gleichzeitig unterscheidet. Von seinen 50 höchsten Testknoten (die Startknoten in `data/k3/nodes.json`) sind 2 illicit, 10 licit und 38 unknown. Ihr Median-Grad (ein- plus ausgehend) liegt bei 13, der mittlere Grad im ganzen Netz bei 2 · 13.757 / 12.000 ≈ 2,29. Der Isolation Forest hält also vor allem stark vernetzte gutartige Knoten für auffällig: Der gutartige Hintergrund des Generators wächst durch Preferential Attachment und bildet Hubs, und Hubs sind strukturelle Ausreißer. Die meisten lokalen Merkmale der Musterknoten sind bewusst nur um 0,5 Standardabweichungen verschoben (`localShift`). Einzelne weichen stärker ab: der größte Ausgangsanteil der Fan-out-Verteiler, die geringere Streuung der Fan-in-Beträge und die doppelte Rate runder Beträge (Einzelheiten in [`docs/daten.md`](docs/daten.md)). Das Signal steckt vor allem in der Netzstruktur (Fan-in, Fan-out, Kreise, Ketten, illicit-Nachbarschaften). Die Generator-Parameter wurden nach dem ersten Ergebnis nicht nachjustiert, auch nicht nach den GNN-Läufen.
 
-Die vollständigen Läufe mit Konfiguration, Seeds und Precision-Recall-Kurven liegen in `data/k3/metrics.json` und `docs/runs/`. Ein Ergebnis, bei dem das GNN die Baseline nicht schlägt, wird hier genauso berichtet.
+**Einordnung der GNN.** GraphSAGE (0,8941) und GCN (0,7897) liegen weit über beiden Baselines und über dem 95-%-Quantil zufälliger Rangfolgen (0,1420). Dieser Abstand mischt aber zwei Effekte: Die GNN lernen aus Labels (197 illicit und 1.830 licit Trainingsknoten), die Baselines nicht, und die GNN sehen die Nachbarschaft. Die Kontrollvariante trennt beides: Das MLP hat dieselbe Größe (2 Schichten, 64 Einheiten), dieselbe Suche über Merkmalssätze und Klassengewichte, dieselben Trainingsdaten und dieselbe Auswahl am Validierungsteil, aber keine Kanten. Merkmalssatz, Gewicht und Epochenzahl wählt die Suche je Verfahren getrennt (Tabelle oben). Das MLP erreicht 0,3765. Auf diesem Netz entfallen damit grob 0,3765 − 0,1633 = 0,21 auf Überwachung, Verfahrenswechsel und die vier Graphmaße zusammen (MLP gegen die bessere Baseline). Dieser Abstand trennt die Labels nicht von den Graphmaßen: Das MLP nutzt lokale Merkmale und Graphmaße, die Z-Scores nur lokale, und am Validierungsteil hebt der Merkmalssatz mit Graphmaßen das MLP von 0,2722 (bester Kandidat nur mit lokalen Merkmalen) auf 0,4970. Sauberer sind die Abstände 0,7897 − 0,3765 = 0,41 (GCN) bzw. 0,8941 − 0,3765 = 0,52 (GraphSAGE) für die Nachbarschaft, weil GNN und MLP dieselben Kandidaten durchlaufen und alle drei den Merkmalssatz mit Graphmaßen gewählt haben. Beide Abstände sind deutlich größer als die Streuung über die Seeds 42 bis 46: Die Spannen von MLP (0,3418 bis 0,4010), GCN (0,7897 bis 0,8148) und GraphSAGE (0,8689 bis 0,8941) überschneiden sich nicht. GraphSAGE liegt in allen fünf Seeds vor GCN; ein Grund kann sein, dass GraphSAGE die eigenen Merkmale eines Knotens mit eigenem Gewicht hält (W₁ hᵥ + W₂ · Mittelwert der Nachbarn), während GCN sie mit den Nachbarn mischt. Das ist eine Vermutung, kein gemessener Befund.
+
+Der Vorbehalt wiegt schwer: Das synthetische Netz ist stark homophil. Von 847 Kanten zwischen zwei gelabelten Knoten verbinden 827 gleiche Labels (Anteil 0,9764), und im Generator ist ein Knoten genau dann illicit, wenn er zu einem eingebetteten Muster gehört und sein Label sichtbar ist. „Meine Nachbarn sehen aus wie Musterknoten“ ist hier fast gleichbedeutend mit „ich bin Musterknoten“. Mitteln über Nachbarn derselben Klasse vergrößert zudem den Abstand der Klassen: Bei einer Verschiebung von δ = 0,5 Standardabweichungen (`localShift`) und d Nachbarn derselben Klasse wächst der standardisierte Abstand nach dem Mitteln über N(v) ∪ {v} auf δ · √(d + 1), bei d = 3 also von 0,5 auf 1,0. Das gilt bei unabhängigem Rauschen gleicher Varianz je Knoten; bei korrelierten Nachbarn, etwa entlang von Ketten und Kreisen mit fast gleichem Betrag (`hopNoiseSd` 0,02), verkleinert das Mitteln das Rauschen kaum, und der Gewinn ist kleiner. Der Vorsprung der Nachbarschaft ist auf diesem Netz deshalb zum Teil eingebaut und nicht auf reale Daten übertragbar. Labels von Nachbarn helfen dabei nicht: Testknoten haben nur Nachbarn im selben Testzeitschritt, und Labels sind nie Eingabe. Wie stark der Vorsprung an der Homophilie hängt, zeigen erst Sensitivitätsläufe mit Tarnkanten oder gradtreuer Umverdrahtung (Roadmap).
+
+Zwei weitere Einschränkungen: Der Validierungsteil enthält nur 21 illicit unter 383 gelabelten Knoten (Prävalenz 0,0548, halb so hoch wie im Test). Unterschiede zwischen Kandidaten von wenigen Hundertsteln sind dort nicht belastbar; Validierungs- und Test-PR-AUC sind nicht direkt vergleichbar. Und bei GraphSAGE lag die beste Validierungsepoche des gewählten Kandidaten auf der Obergrenze von 300 Epochen; das Early Stopping hat nicht gegriffen, mehr Epochen könnten den Wert ändern. Die Obergrenze wurde nach dem Blick auf den Test nicht verändert.
+
+Als grobe Schwelle für vergleichende Sätze dient auf der Seite der Abstand zwischen 95-%-Quantil und Erwartungswert zufälliger Rangfolgen, 0,1420 − 0,1181 = 0,0239. Ein Unterschied darunter wird nicht als Rangfolge gelesen. Das ist kein statistischer Test, sondern ein Maß dafür, wie stark schon zufällige Rangfolgen auf diesen 852 Testknoten streuen. Alle Abstände oben liegen darüber, der Abstand der Baselines (0,0352) aber nur knapp, um 0,0113; weit darüber liegen MLP gegen Z-Scores 0,2132, GCN gegen MLP 0,4132, GraphSAGE gegen MLP 0,5176 und GraphSAGE gegen GCN 0,1044.
+
+Die vollständigen Läufe mit Konfiguration, Suche, Seeds und Precision-Recall-Kurven liegen in `data/k3/metrics.json` und `docs/runs/`. Ein Ergebnis, bei dem das GNN die Baseline nicht schlägt, würde hier genauso berichtet. Die Seite `/projects/netzradar` rechnet ihre Einordnung aus `metrics.json` und formuliert einen Vergleich nur, wenn die Zahlen ihn tragen.
 
 ## Datensatz
 
@@ -54,14 +73,20 @@ Zum Elliptic-Datensatz: Der Originaldatensatz steht unter CC BY-NC-ND 4.0. Desha
 
 ## Methodik
 
-- **Zeitlicher Split.** Alle Trainingszeitschritte liegen vor allen Testzeitschritten. Synthetisch: Training 1 bis 21, Test 22 bis 30; Elliptic: Training 1 bis 34, Test 35 bis 49. Der Validierungsteil (synthetisch 18 bis 21, Elliptic 30 bis 34) liegt innerhalb des Trainingszeitraums und ist für die Hyperparameterwahl der GNN in Schritt 4 vorgesehen; die Baselines haben keine abgestimmten Hyperparameter. Ein zufälliger Split würde Knoten derselben Zeitkomponente auf beide Seiten verteilen und die Ergebnisse überschätzen. Vor jedem Lauf prüft `check_split`, dass kein Zeitschritt auf beiden Seiten liegt und keine Kante Trainings- und Testknoten verbindet (`crossSplitEdges` = 0).
+- **Zeitlicher Split.** Alle Trainingszeitschritte liegen vor allen Testzeitschritten. Synthetisch: Training 1 bis 21, Test 22 bis 30; Elliptic: Training 1 bis 34, Test 35 bis 49. Der Validierungsteil (synthetisch 18 bis 21, Elliptic 30 bis 34) liegt innerhalb des Trainingszeitraums und dient nur der Auswahl bei den GNN; die Baselines haben keine abgestimmten Hyperparameter. Ein zufälliger Split würde Knoten derselben Zeitkomponente auf beide Seiten verteilen und die Ergebnisse überschätzen. Vor jedem Lauf prüft `check_split`, dass kein Zeitschritt auf beiden Seiten liegt und keine Kante Trainings- und Testknoten verbindet (`crossSplitEdges` = 0).
 - **Lokale Merkmale** (12, synthetisch): Betrag, Gebühr, Gebührenrate, Zahl der Ein- und Ausgänge, Größe, runder Betrag, Wechselgeld-Ausgang, größter Ausgangsanteil, Variationskoeffizient der Eingangsbeträge, Stunden seit der letzten Transaktion, Alter der Adresse. Wie bei Elliptic hängen Ein- und Ausgänge teilweise vom Grad ab (Grad + Poisson(1)).
 - **Graphmaße** je Zeitschritt: Ein- und Ausgangsgrad, Betweenness-Zentralität auf dem gerichteten Graphen (exakt bis 5.000 Knoten je Zeitschritt, darüber mit 1.000 gezogenen Quellknoten, Seed 42) und Eigenvektor-Zentralität auf der ungerichteten Version (höchstens 1.000 Iterationen, Toleranz 1e-6, bei Nichtkonvergenz 0 mit Warnung). Diese Einstellungen und die Zeitschritte mit Stichprobe oder Rückfall auf 0 stehen je Lauf unter `hyperparameters.graphMeasures`.
 - **Robuste Z-Scores.** zᵢⱼ = (xᵢⱼ − medianⱼ) / (1,4826 · MADⱼ) mit Median und MAD nur aus den Trainingsknoten; Merkmale mit MAD = 0 tragen 0 bei. Score = maxⱼ |zᵢⱼ| über die lokalen Merkmale. Der Faktor 1,4826 macht die MAD bei Normalverteilung zu einem Schätzer der Standardabweichung. Welche Merkmale wegen MAD = 0 nichts beitragen, steht unter `hyperparameters.zeroMadFeatures`.
 - **Isolation Forest** mit 200 Bäumen, `contamination` 0,02, `max_samples` auto, `random_state` 42, angepasst nur auf den Trainingsknoten ohne Labels, auf lokalen Merkmalen plus Graphmaßen. Score = −`score_samples`: Punkte, die mit wenigen zufälligen Splits isoliert werden, gelten als anomal.
-- **GNN** (Schritt 4, geplant): GCN und GraphSAGE mit zwei Schichten, 64 versteckten Einheiten, Dropout 0,5, Adam mit Lernrate 0,01 und Weight Decay 5e-4, gewichtete Kreuzentropie für die seltene Positivklasse; Hyperparameter nur am Validierungsteil gewählt.
+- **GNN.** GCN (`GCNConv`, Kipf und Welling) und GraphSAGE (`SAGEConv` mit Mittelwert) in PyTorch Geometric, je zwei Schichten mit 64 versteckten Einheiten, ReLU nach Schicht 1, danach Dropout 0,5, Ausgabe zwei Logits; Adam mit Lernrate 0,01 und Weight Decay 5e-4; Full-Batch, eine Epoche ist ein Optimierungsschritt; keine BatchNorm. Kanten ungerichtet (jede Kante in beiden Richtungen); die Richtung steckt weiter in den Merkmalen (Zahl der Ein- und Ausgänge, im Merkmalssatz mit Graphmaßen Ein- und Ausgangsgrad). Message Passing am Beispiel der Kette A – B – C – D mit x = (1, 0, 0, 1), Gewichten 1 und ohne Bias: GCN rechnet hᵥ' = Σ_{u ∈ N(v) ∪ {v}} hᵤ / √(d̃ᵤ d̃ᵥ) mit d̃ = Grad + 1 = (2, 3, 3, 2) und ergibt (0,5; 0,408248; 0,408248; 0,5), GraphSAGE rechnet hᵥ' = hᵥ + Mittelwert der Nachbarn und ergibt (1; 0,5; 0,5; 1). Die Tests prüfen diese Werte.
+- **Kontrollvariante MLP.** Dieselbe Größe mit zwei linearen Schichten statt Faltungen, also ohne Kanten, mit derselben Suche über Merkmalssätze und Klassengewichte und derselben Auswahl am Validierungsteil. Was gewählt wird (Merkmalssatz, Gewicht, Epochen), entscheidet die Suche je Verfahren; die Endmodelle unterscheiden sich darin (Tabelle unter Ergebnisse). GNN gegen MLP misst den Gewinn durch die Nachbarschaft bei gleicher Überwachung und gleichem Auswahlverfahren.
+- **Training ohne Testdaten (transduktiv).** Alle 12.000 Knoten sind im Graphen, auch `unknown` und die Testknoten; in den Verlust gehen nur gelabelte Knoten der Trainingsphase. Das ist kein Leck: `check_split` erzwingt 0 Kanten zwischen Trainings- und Testknoten, die Adjazenzmatrix zerfällt also in Blöcke, und die Normierung von GCN hängt für Trainingsknoten nur vom Trainingsblock ab (Â_TS = D̃_T^(−1/2) A_TS D̃_S^(−1/2) = 0). Per Induktion über die Schichten hängen die Logits der Trainingsknoten nur von deren Merkmalen, deren Kanten und den Gewichten ab, ebenso Verlust, Gradienten und jeder Adam-Schritt. Testmerkmale, Teststruktur und Testlabels beeinflussen die gelernten Gewichte nicht; erst danach wird das Modell auf die Testknoten angewandt. Ein Test ändert Testmerkmale (· 1000 + 50) und setzt alle Testlabels auf illicit und erwartet bitgleiche Gewichte, Trainingsscores, Auswahl und Epochen. Dasselbe gilt für Fit- gegen Validierungsknoten; `check_fit_validation_edges` bricht bei einer Kante zwischen Zeitschritt 1 bis 17 und 18 bis 21 ab.
+- **Skalierung.** Robust je Merkmal mit Statistik nur aus den Trainingsknoten der jeweiligen Phase (alle Knoten der Zeitschritte, nur Merkmale): x̃ = clip((x − Median) / s, −10, 10) mit s = 1,4826 · MAD, bei MAD = 0 die Standardabweichung, ist auch die 0, dann 1. Anders als bei den Z-Scores fällt kein Merkmal weg. Beispiel: Trainingswerte (1, 2, 3, 4, 100) ergeben Median 3, MAD 1, s = 1,4826; der Wert 1 wird zu −1,348982, der Wert 100 zu 65,43 und auf 10 gekappt. Welche Merkmale den Rückfall nutzen, steht unter `hyperparameters.scaling.zeroMadFeatures`.
+- **Klassengewicht.** Gewichtete Kreuzentropie mit Gewicht 1 für licit und w für illicit. PyTorch teilt durch die Summe der Gewichte, deshalb zählt nur w. Standard ist w = n_licit / n_illicit aus den Labels der Verlustmenge, dann tragen beide Klassen dasselbe Gesamtgewicht (Auswahl 1.468 / 176 = 8,3409, Endmodell 1.830 / 197 = 9,2893); w = 20 aus dem Umsetzungsdokument läuft als Kandidat mit. Handbeispiel im Test: Logits (2, 0) für einen licit- und (0, 0) für einen illicit-Knoten, w = 4: (1 · 0,126928 + 4 · 0,693147) / 5 = 0,579903.
+- **Auswahl, dann Endmodell.** Je Architektur vier Kandidaten (Merkmalssatz `local` oder `local+graph`, w aus dem Trainingsverhältnis oder 20), trainiert auf den gelabelten Knoten der Zeitschritte 1 bis 17, höchstens 300 Epochen, nach jeder Epoche PR-AUC auf den gelabelten Validierungsknoten 18 bis 21, Abbruch nach 50 Epochen ohne Verbesserung. Gewählt wird der Kandidat mit der höchsten Validierungs-PR-AUC, verglichen auf 4 Nachkommastellen wie im Export, bei Gleichstand der frühere; als Epochenzahl gilt seine beste Epoche, bei Gleichstand die frühere. Das Endmodell wird mit Skalierung und Gewicht aus 1 bis 21 neu auf allen Trainingszeitschritten trainiert, genau so viele Epochen, ohne Blick auf Validierung oder Test, und einmal auf den gelabelten Testknoten bewertet, mit denselben Funktionen wie die Baselines. Alle Kandidaten stehen mit Validierungswert, bester Epoche und Abbruchepoche unter `hyperparameters.search`.
+- **GNN-Score.** `scoreGnn` = Logit illicit − Logit licit; höher heißt auffälliger. Das ist keine Wahrscheinlichkeit: Das Klassengewicht verschiebt die Odds um den Faktor w, die Rangfolge und damit die PR-AUC bleibt davon im Optimum unberührt.
 - **Metriken.** Hauptmetrik ist PR-AUC als Average Precision: AP = Σₙ (Rₙ − Rₙ₋₁) · Pₙ über die Schwellen n. Dazu Precision bei Recall ≥ 0,5 und Recall bei Precision ≥ 0,5, beide auf der vollen Kurve. Die exportierte PR-Kurve beginnt bei der höchsten Schwelle, ohne den künstlichen Startpunkt (Recall 0, Precision 1) von scikit-learn, und ist auf höchstens 101 Punkte ausgedünnt. Als Zufallsreferenz dienen die Prävalenz (PR-AUC eines konstanten Scores), der exakte Erwartungswert der Average Precision einer zufälligen Rangfolge, E[AP] = (1/N) Σₖ (1 + (k − 1)(P − 1)/(N − 1)) / k mit N gelabelten Testknoten und P positiven, und das 95-%-Quantil aus 10.000 zufälligen Rangfolgen mit Seed 42. Accuracy nur als Nebenwert. Warum: Im synthetischen Test erreicht „alles licit“ 0,8885 Accuracy und ist wertlos. Bei Elliptic sind 2 % aller Knoten illicit, unter den gelabelten aber 4.545 / 46.564 ≈ 9,8 %; ein Alles-licit-Modell hätte dort auf den gelabelten Knoten etwa 90 % Accuracy.
-- **Reproduzierbarkeit.** Ein Seed (42) für Generator, Isolation Forest, Betweenness-Stichprobe, Zufallsreferenz und Layout. Merkmale sind auf 6, exportierte Floats auf 4 Nachkommastellen gerundet. Jeder Lauf schreibt Datensatz, Split, Seed, Hyperparameter und Datum nach `docs/runs/`. `k3-train verify` rechnet die synthetische Pipeline neu und vergleicht jeden Wert in `metrics.json`, `nodes.json`, `edges.json` und in den jüngsten Protokollen unter `docs/runs/` mit Toleranz 1e-4. Zwei Läufe in getrennten Prozessen sind bis auf Zeitstempel byte-gleich.
+- **Reproduzierbarkeit.** Ein Seed (42) für Generator, Isolation Forest, Betweenness-Stichprobe, Zufallsreferenz, Layout und GNN. Die GNN rechnen in float64 mit `torch.manual_seed`, `torch.use_deterministic_algorithms(True)` und einem Thread; die Kantenliste ist sortiert und ohne Duplikate. Merkmale sind auf 6, exportierte Floats auf 4 Nachkommastellen gerundet. Jeder Lauf schreibt Datensatz, Split, Seed, Hyperparameter und Datum nach `docs/runs/`; die GNN-Protokolle enthalten zusätzlich die Streuung über die Seeds 42 bis 46 und die Umgebung (torch- und PyG-Version, Plattform, Threads). `k3-train verify` rechnet die synthetische Pipeline einschließlich der GNN neu und vergleicht jeden Wert in `metrics.json`, `nodes.json`, `edges.json` und in den jüngsten Protokollen unter `docs/runs/` mit Toleranz 1e-4; ausgenommen sind nur `generatedAt`, `date` und `environment`. Weil beide Seiten auf 4 Nachkommastellen gerundet sind, rechnet `verify` zur Toleranz 1e-9 Gleitkomma-Spielraum hinzu: Eine Abweichung um genau einen Rundungsschritt (0,1234 gegen 0,1235, im Gleitkomma knapp über 1e-4) geht durch, zwei Schritte nicht. Mit `K3_REQUIRE_GNN=1` (in der CI gesetzt) endet `verify` mit Exit 1, wenn `metrics.json` keine GNN-Runs enthält. Zwei Läufe in getrennten Prozessen sind bis auf Zeitstempel byte-gleich.
 
 ## So funktioniert es
 
@@ -75,26 +100,31 @@ synth.py (Seed 42)  oder  Rohdaten lokal (<Datenordner>/raw/, nicht im Repo)
                          -> robuste Z-Scores (lokal) | Isolation Forest (lokal + Graph)
                          -> Kennzahlen auf gelabelten Testknoten
                          -> docs/runs/<datum>_<datensatz>_<verfahren>.json
-  -> (Schritt 4)         GCN / GraphSAGE in PyTorch Geometric -> Kennzahlen
+  -> k3-train gnn        GCN, GraphSAGE und MLP-Kontrolle (PyTorch Geometric, Extra gnn):
+                         Suche auf 1-17 mit Validierung 18-21, Endmodell auf 1-21,
+                         Kennzahlen auf gelabelten Testknoten, Seeds 42-46
+                         -> docs/runs/<datum>_<datensatz>_{gcn,graphsage,mlp}.json
   -> k3-train export     50 Testknoten mit hoechstem Isolation-Forest-Score + 2-Hop-Nachbarschaft,
-                         Layout vorberechnet -> data/k3/nodes.json, edges.json, metrics.json
+                         Layout vorberechnet, scoreGnn vom GNN mit der hoeheren Validierungs-PR-AUC
+                         -> data/k3/nodes.json, edges.json, metrics.json
   -> k3-train verify     Neuberechnung, Vergleich mit metrics.json, nodes.json, edges.json
                          und den juengsten Laufprotokollen (Toleranz 1e-4)
-  -> Next.js-Seite /projects/netzradar bindet nur diese JSON-Dateien beim Build ein:
-     Graph-Ausschnitt (Sigma.js), Metriktafel und PR-Kurven (Recharts)
+  -> Next.js-Seite /projects/netzradar bindet nur diese JSON-Dateien beim Build ein und prueft sie streng
+     (Datenvertrag v3): Graph-Ausschnitt (Sigma.js) mit scoreGnn, Metriktafel aller Runs, PR-Kurven (Recharts),
+     Suche der GNN am Validierungsteil, aus den Zahlen berechnete Einordnung
 ```
 
 Vorberechnung statt Live-Inferenz: GNN-Inferenz wäre für Serverless-Funktionen zu schwer und würde Kosten und Latenz erzeugen. Statische JSON-Dateien sind kostenlos und schnell. Der Browser rechnet kein Modell und kein Layout. Der Vollgraph wird nicht gerendert.
 
 ## Screenshots
 
-Die Seite zeigt die 2-Hop-Nachbarschaft der 50 Testknoten mit dem höchsten Isolation-Forest-Score als interaktiven Graphen (derzeit 1.635 Knoten und 1.784 Kanten), kodiert nach Label: auffällig in Bordeaux mit Goldring, unauffällig in Grün, unbekannt hohl in Grau. Je Knoten stehen beide Scores. Daneben die Metriktafel mit PR-Kurven.
+Die Seite zeigt die 2-Hop-Nachbarschaft der 50 Testknoten mit dem höchsten Isolation-Forest-Score als interaktiven Graphen (derzeit 1.635 Knoten und 1.784 Kanten), kodiert nach Label: auffällig in Bordeaux mit Goldring, unauffällig in Grün, unbekannt hohl in Grau. Detailfeld und Tabelle der Startknoten zeigen je Knoten die Scores von Isolation Forest, robusten Z-Scores und GraphSAGE (`scoreGnn`, das GNN mit der höheren Validierungs-PR-AUC). Darunter die Metriktafel mit allen fünf Runs, Zufallsreferenz und PR-Kurven, die Methodik der GNN mit Rechenbeispiel, die Suche am Validierungsteil und die Einordnung mit Homophilie-Vorbehalt.
 
-![Graph-Ansicht: 2-Hop-Nachbarschaft der 50 auffälligsten Testknoten](docs/screenshots/netzradar-graph.png)
+![Graph-Ansicht: 2-Hop-Nachbarschaft der 50 auffälligsten Testknoten und Startknoten mit GNN-Score](docs/screenshots/netzradar-graph.png)
 
-![Metriktafel mit PR-AUC, Precision, Recall und Precision-Recall-Kurven](docs/screenshots/netzradar-metriken.png)
+![Metriktafel mit PR-AUC, Precision, Recall und Precision-Recall-Kurven aller fünf Verfahren](docs/screenshots/netzradar-metriken.png)
 
-Beide Ansichten zeigen das synthetische Netz.
+Beide Ansichten zeigen das synthetische Netz, Stand 07.10.2026.
 
 ## Datenschutz
 
@@ -102,43 +132,45 @@ Die Seite nimmt keine Eingaben und keine Dateien entgegen. Es gibt keine Anmeldu
 
 ## Reproduktion
 
-Voraussetzungen: Python 3.12 und [uv](https://docs.astral.sh/uv/). Für die geplanten GNN-Läufe auf Elliptic optional eine GPU; Google Colab reicht.
+Voraussetzungen: Python 3.12 und [uv](https://docs.astral.sh/uv/). PyTorch 2.8 und PyTorch Geometric 2.7 kommen als optionales Extra `gnn` aus dem CPU-Index von PyTorch; eine GPU ist nicht nötig. Der Download beträgt unter Windows rund 620 MB (torch-Wheel 590,7 MiB), unter Linux [noch nicht gemessen, folgt mit dem ersten CI-Lauf].
 
 Linux und macOS mit make:
 
 ```bash
 git clone https://github.com/mirkan-morgenfels-ai/AI-Project-3.git
 cd AI-Project-3/services/k3-train
-uv sync
+uv sync --extra gnn
 make verify
 make data SYNTH=1
 make baseline
+make gnn
 make export
 make verify
 ```
 
-`make all` führt zusätzlich ruff und pytest aus. `make gnn` folgt in Schritt 4.
+`make all` führt zusätzlich ruff und pytest aus. `make gnn`, `make verify` und `make test` rufen `uv run --extra gnn` auf; `data`, `baseline`, `export` und `lint` brauchen torch nicht.
 
 Windows (PowerShell) ohne make:
 
 ```powershell
 git clone https://github.com/mirkan-morgenfels-ai/AI-Project-3.git
 cd AI-Project-3\services\k3-train
-uv sync
-uv run k3-train verify
+uv sync --extra gnn
+uv run --extra gnn k3-train verify
 uv run k3-train data --synth
 uv run k3-train baseline
+uv run --extra gnn k3-train gnn
 uv run k3-train export
-uv run k3-train verify
+uv run --extra gnn k3-train verify
 ```
 
 Liegt das Repository in einem synchronisierten Ordner wie OneDrive, die virtuelle Umgebung vor `uv sync` außerhalb anlegen lassen, zum Beispiel mit `$env:UV_PROJECT_ENVIRONMENT = "$env:LOCALAPPDATA\netzradar\venv"`.
 
-Das erste `verify` prüft die eingecheckten Dateien in `data/k3/` und die jüngsten Protokolle in `docs/runs/` gegen eine Neuberechnung im Speicher; es braucht keine aufbereiteten Daten. `data` erzeugt das synthetische Netz und schreibt es aufbereitet nach `services/k3-train/data/processed/`. `baseline` rechnet beide Verfahren und schreibt je ein Protokoll nach `docs/runs/`. `export` schreibt `nodes.json`, `edges.json` und `metrics.json` nach `data/k3/`, von wo die Seite sie statisch lädt. Das zweite `verify` prüft die neu geschriebenen Dateien und meldet „Reproduzierbar“ oder jede Abweichung über 1e-4. Weil `baseline` und `export` das heutige Datum schreiben, ändern sich bei einem Neulauf nur `generatedAt`, `date` und die Namen der Protokolldateien; `git diff` zeigt das.
+Das erste `verify` prüft die eingecheckten Dateien in `data/k3/` und die jüngsten Protokolle in `docs/runs/` gegen eine Neuberechnung im Speicher, einschließlich der GNN-Läufe; es braucht keine aufbereiteten Daten. Ohne das Extra endet es mit Exit 1 und dem Hinweis auf `uv sync --extra gnn`, sobald `metrics.json` GNN-Runs enthält. `uv sync` ohne `--extra gnn` entfernt torch wieder. `data` erzeugt das synthetische Netz und schreibt es aufbereitet nach `services/k3-train/data/processed/`. `baseline` rechnet beide Baselines, `gnn` die drei gelernten Verfahren; beide schreiben je Verfahren ein Protokoll nach `docs/runs/`. `gnn` braucht die Ergebnisse von `baseline` (Graphmaße). `export` schreibt `nodes.json`, `edges.json` und `metrics.json` nach `data/k3/`, von wo die Seite sie statisch lädt; ohne GNN-Ergebnisse bleibt `scoreGnn` leer. Das zweite `verify` prüft die neu geschriebenen Dateien und meldet „Reproduzierbar“ oder jede Abweichung über 1e-4. Weil `baseline`, `gnn` und `export` das heutige Datum (UTC) schreiben, ändern sich bei einem Neulauf nur `generatedAt`, `date` und die Namen der Protokolldateien; `git diff` zeigt das.
 
 Elliptic lokal (Rohdaten von Kaggle, Anleitung in `docs/daten.md`): einen Datenordner außerhalb des Repositorys wählen, die Rohdaten nach `<Datenordner>/raw/elliptic/` legen und `uv run k3-train data --dataset elliptic --data-dir <Datenordner>`, danach `uv run k3-train baseline --dataset elliptic --data-dir <Datenordner>` ausführen. Statt `--data-dir` geht auch die Umgebungsvariable `K3_DATA_DIR`, mit make `make data DATASET=elliptic DATA_DIR=<Datenordner>`; Rohdaten an anderer Stelle per `--raw-dir` bzw. `RAW_DIR`. Aufbereitete Dateien und Protokolle landen dann ebenfalls im Datenordner und bleiben lokal. Ohne Datenordner gilt `services/k3-train/data/`; liegt das Repository in OneDrive, würde das mitsynchronisiert.
 
-Laufzeiten: Auf dem synthetischen Netz braucht jeder Befehl auf einer Laptop-CPU wenige Sekunden Rechenzeit; die CLI gibt sie am Ende aus. Elliptic-Volllauf: [Platzhalter: noch nicht gemessen].
+Laufzeiten, gemessen am 06.10.2026 (UTC) unter Windows auf einer Laptop-CPU, wie die CLI sie ausgibt: `data` 0,7 s, `baseline` 4,1 s, `export` 1,9 s; `gnn` 334,5 s für 3 Verfahren mit je 4 Auswahlläufen, einem Endmodell und 4 weiteren Seeds; `verify` mit GNN 302 bis 357 s. Dazu kommen je Aufruf rund 10 s für Start und Importe. Elliptic-Volllauf: [Platzhalter: noch nicht gemessen].
 
 ## Frontend lokal
 
@@ -157,8 +189,8 @@ Danach unter http://localhost:3000/projects/netzradar. Umgebungsvariablen sind n
 cd services/k3-train
 uv run ruff check
 uv run ruff format --check
-uv run pytest
-uv run k3-train verify
+uv run --extra gnn pytest
+uv run --extra gnn k3-train verify
 ```
 
 ```bash
@@ -169,7 +201,7 @@ pnpm build
 pnpm test:e2e
 ```
 
-pytest (117 Tests, Stand 06.10.2026) deckt ab:
+pytest (171 Tests, Stand 07.10.2026; ohne das Extra `gnn` werden die 28 Tests in `test_gnn.py` und `test_gnn_pipeline.py` mit Grund übersprungen, mit `K3_REQUIRE_GNN=1` bricht pytest dann ab) deckt ab:
 
 - Generator: Determinismus bei gleichem Seed, Knoten je Zeitschritt, Kanten nur innerhalb eines Zeitschritts, je Zeitschritt eine schwache Zusammenhangskomponente, keine Selbstschleifen und Duplikate, Form der Muster, homophile illicit-Nachbarschaften.
 - Laden: Elliptic-Format an einer erfundenen Mini-Fixture einschließlich der Trennung lokaler und aggregierter Merkmale, Kantenbereinigung an einem Handbeispiel, verlustfreies Schreiben und Lesen der aufbereiteten Dateien.
@@ -178,20 +210,22 @@ pytest (117 Tests, Stand 06.10.2026) deckt ab:
 - Baseline: robuster Z-Score mit Ausreißer von Hand gerechnet, MAD = 0 und die Liste der betroffenen Merkmale, Normalisierung nur mit Trainingsdaten, Isolation Forest deterministisch und nur auf Trainingsknoten angepasst.
 - Pipeline gegen Lecks: Geänderte Testmerkmale ändern keinen Trainingsscore, vertauschte Labels ändern keinen Score; Golden-Werte des kleinen Testnetzes.
 - Metriken: PR-AUC, Precision bei Recall, Recall bei Precision, Accuracy der obersten 2 % mit markierten Knoten und Treffern, Prävalenz, Alles-licit-Accuracy und Erwartungswert zufälliger Rangfolgen jeweils an Handbeispielen, auch mit Gleichständen; `unknown` wird ausgeschlossen; PR-Kurve ohne künstlichen Startpunkt und mit höchstens 101 Punkten.
+- Training ohne torch: Fit-, Validierungs-, Trainings- und Testteil (6.800, 1.600, 8.400 und 3.600 Knoten mit den Labelzahlen je Teil), Skalierung am Handbeispiel mit Kappung und Rückfall auf die Standardabweichung, Skalierung nur aus Trainingszeilen, Klassengewicht 4,0 am Handbeispiel und 8,3409 bzw. 9,2893 auf dem Standardnetz, Verlustmenge ohne `unknown`, Validierung und Test, Abbruch bei Kanten zwischen Fit- und Validierungsknoten, Auswahl bei Gleichstand auch nach Rundung auf 4 Nachkommastellen, Early Stopping mit der früheren besten Epoche.
+- GNN mit torch: Versionen wie im Lock, Mittelwert über N(v) ∪ {v}, GCN- und GraphSAGE-Schicht sowie gerichtetes GCN am Mini-Beispiel A – B – C – D von Hand, Rezeptivfeld von zwei Hops, gewichtete Kreuzentropie von Hand, ungerichtete Kantenliste, bitgleiche Wiederholung mit Seed 42, Wiederherstellung der besten Epoche, keine Wirkung von Testmerkmalen und Testlabels auf Gewichte, Trainingsscores, Auswahl, Epochen und Klassengewicht, Skalierung der Auswahl nur aus den Fit-Zeitschritten (Median und Skala bitgleich, auch wenn sich die Merkmale der Validierungsknoten ändern) und des Endmodells aus dem ganzen Trainingszeitraum, Aufzeichnung jeder Verlustmenge, Vertragsprüfung der Runs und Protokolle, Export mit `scoreGnn`, Kommandozeile von `data` bis `export`.
 - Export: Datenvertrag aller drei Dateien, Startknoten, Hops als ungerichtete Distanzen, Koordinaten in [-1, 1], Kürzung, byte-gleiche Ausgabe, Layout unabhängig vom Python-Hash-Seed, deterministische Gesamtpipeline.
-- Protokolle, Verifikation von `metrics.json`, `nodes.json`, `edges.json` und Protokollen sowie CLI, darunter die Ablehnung des Elliptic-Exports, der Datenordner außerhalb des Repositorys und der Abbruch außerhalb des Projektordners.
+- Protokolle, Verifikation von `metrics.json`, `nodes.json`, `edges.json` und Protokollen (Toleranz bei genau einem Rundungsschritt, Abbruch ohne GNN-Runs bei `K3_REQUIRE_GNN=1`) sowie CLI, darunter die Ablehnung des Elliptic-Exports, der Datenordner außerhalb des Repositorys, der Abbruch außerhalb des Projektordners und ein Unterprozess, der zeigt, dass `cli`, `export`, `verify`, `runs`, `training`, `gnn_results` und `pipeline` torch nicht laden und `k3-train gnn` ohne torch mit Exit 2 und Hinweis endet. `scoreGnnMethod` vergleicht wie der Datenvertrag auf 4 Nachkommastellen.
 
-Vitest prüft die Seitenlogik in `apps/web/lib/`, Playwright die Seiten im Browser einschließlich des Wächters gegen fremde Anfragen, Konsolenfehler und CSP-Verstöße sowie der Tastaturbedienung im Detailfeld.
+Vitest (167 Tests in 8 Dateien, Stand 07.10.2026) prüft die Seitenlogik in `apps/web/lib/`: den strengen Parser für Datenvertrag 3 mit Annahme der echten Dateien und 65 Tests mit kaputten Varianten (unter anderem falsche `schemaVersion`, `scoreGnnMethod` „mlp“ oder mit der niedrigeren Validierungs-PR-AUC, `scoreGnn` null trotz gesetztem Verfahren, zwei gewählte Kandidaten, Auswahl nicht der beste oder bei Gleichstand nicht der frühere Kandidat, doppelter Kandidat, Abbruchepoche ohne Geduld, Validierungsteil abweichend vom Split, Kanten im MLP, `seedSpread` in `metrics.json`, abweichende feste Hyperparameter wie Score, Verlust, Aktivierung, Optimierer, Schichten, Breite, Dropout, Lernrate, Weight Decay, `dtype` und Skalierung), die Kennzahlen der Texte mit Handwerten (Erwartungswert zufälliger Rangfolgen, Mindestabstand 0,1420 − 0,1181 = 0,0239, höchste Accuracy bei 18 markierten Knoten 775 / 852, Klassenabstand nach dem Mitteln δ(1 + d(1 − 2ρ)) / √(d + 1) mit 1,0 und 0,25), die Satzbausteine der Einordnung in `assessment.ts` (echte Werte: 0,4132 − 0,2132 = 0,2000 > 0,0239, also Satz zur Nachbarschaft; GNN − MLP = 0,03 bei Überwachungsgewinn 0,02 ohne diesen Satz; MLP unter der Baseline; GCN und GraphSAGE innerhalb des Mindestabstands; Baselines 0,0352 gegen 0,0100; Vorbehalt nur bei gemessenem Vorsprung), das Message-Passing-Beispiel A – B – C – D (Mittelwert, GCN mit 1/√6, GraphSAGE, MLP), Formate, Farben und Strichmuster ohne Blau. Playwright (13 Tests) prüft die Seiten im Browser: alle PR-AUC-Werte der Metriktafel aus `metrics.json`, keine Hinweise „noch nicht gemessen“, sobald alle Runs vorliegen, `scoreGnn` mit Verfahren in Tabelle und Detailfeld aus `nodes.json`, die Sätze der Einordnung gegen die aus `metrics.json` berechneten Differenzen, Legende der PR-Kurven, den Wächter gegen fremde Anfragen, Konsolenfehler und CSP-Verstöße, die Tastaturbedienung im Detailfeld und mit axe-core 4.14.0 (WCAG 2.x A und AA, Best Practices) keine Verstöße bei 390, 768 und 1280 px Breite.
 
-Die CI führt bei jedem Push auf `main` und jedem Pull Request zwei Jobs aus: `web` mit install, typecheck, lint, test, build und E2E sowie `train` mit `uv sync --locked` (uv 0.12.23, `UV_LOCKED=1` für alle `uv run`), `make lint` (ruff check und ruff format --check), `make test`, `make verify` gegen die eingecheckten Dateien und danach als Rauchtest `make data SYNTH=1`, `make baseline`, `make export` und ein zweites `make verify`. Ein GNN-Smoke-Test kommt mit Schritt 4 dazu; das volle Training läuft lokal, sein Ergebnis wird als `metrics.json` committet.
+Die CI führt bei jedem Push auf `main` und jedem Pull Request drei Jobs aus: `web` mit install, typecheck, lint, test, build und E2E; `train` mit `uv sync --locked --extra gnn` (uv 0.12.23, `UV_LOCKED=1` für alle `uv run`, `K3_REQUIRE_GNN=1`), `make lint` (ruff check und ruff format --check), `make test`, `make verify` gegen die eingecheckten Dateien einschließlich der GNN-Läufe (ohne GNN-Runs in `metrics.json` rot) und danach `make data SYNTH=1`, `make baseline`, `make gnn` und `make export` als Durchlauf der Kommandozeile; `train-core` mit `uv sync --locked` ohne Extra und `uv run pytest`, damit ein versehentlicher Import von torch in den Kernmodulen auffällt (die GNN-Tests werden dort mit Grund übersprungen). Die GNN werden auf dem synthetischen Netz in der CI also voll trainiert und nachgerechnet, nicht nur als Smoke-Test (Abweichung vom Umsetzungsdokument 3.8, beschlossen am 07.10.2026). Ob Windows und Linux dabei innerhalb von 1e-4 übereinstimmen, zeigt erst der erste CI-Lauf mit GNN.
 
 ## Projektstruktur
 
 ```
 services/k3-train/                    Python 3.12, uv-Projekt, Paket k3_train
-  pyproject.toml, uv.lock             Abhaengigkeiten, fixiert
-  Makefile                            all, data, baseline, export, verify, test, lint (gnn folgt)
-  src/k3_train/cli.py                 Kommandozeile k3-train: data, baseline, export, verify
+  pyproject.toml, uv.lock             Abhaengigkeiten, fixiert; Extra gnn (torch, torch-geometric)
+  Makefile                            all, data, baseline, gnn, export, verify, test, lint
+  src/k3_train/cli.py                 Kommandozeile k3-train: data, baseline, gnn, export, verify
   src/k3_train/synth.py               synthetischer Netzgenerator
   src/k3_train/load.py                Laden, Aufbereiten, Kantenbereinigung
   src/k3_train/datasets.py            Datensatzregister mit Lizenz und Freigabe
@@ -201,6 +235,10 @@ services/k3-train/                    Python 3.12, uv-Projekt, Paket k3_train
   src/k3_train/baseline.py            robuste Z-Scores, Isolation Forest
   src/k3_train/metrics.py             PR-AUC, Precision, Recall, PR-Kurve
   src/k3_train/pipeline.py            Baseline-Lauf und Protokolle
+  src/k3_train/training.py            Trainingsteile, Skalierung, Klassengewicht, Suche (ohne torch)
+  src/k3_train/gnn.py                 GCN, GraphSAGE, MLP, Training mit Early Stopping (torch, PyG)
+  src/k3_train/gnn_pipeline.py        Suche, Endmodell, Seed-Streuung, Hyperparameter (torch)
+  src/k3_train/gnn_results.py         GNN-Ergebnisse speichern und laden, Wahl von scoreGnn (ohne torch)
   src/k3_train/export.py              JSON-Export mit Ausschnitt und Layout
   src/k3_train/verify.py              Nachrechnen gegen data/k3 und die juengsten Protokolle
   src/k3_train/paths.py               Pfade, Datenordner (--data-dir, K3_DATA_DIR)
@@ -210,9 +248,10 @@ services/k3-train/                    Python 3.12, uv-Projekt, Paket k3_train
 data/k3/                              nodes.json, edges.json, metrics.json
 apps/web/app/projects/netzradar/      Projektseite
 apps/web/components/netzradar/        NetzRadarExplorer, GraphView, GraphLegend, NodeDetail, NodeSymbol,
-                                      TopNodesTable, MetricsTable
-apps/web/lib/netzradar/               types.ts, data.ts (Datenvertrag und Pruefung), graph.ts, format.ts,
-                                      summary.ts, curves.ts, Unit-Tests
+                                      TopNodesTable, MetricsTable, SearchTable, ScrollRegion
+apps/web/lib/netzradar/               types.ts, data.ts (Datenvertrag v3 und Pruefung), graph.ts, format.ts,
+                                      summary.ts, assessment.ts (Saetze der Einordnung), curves.ts,
+                                      messagePassing.ts, Unit-Tests
 apps/web/e2e/                         Playwright-Tests
 packages/ui/                          Basiskomponenten
 packages/legal/                       Betreiberangaben, Disclaimer, Datenschutztexte
@@ -220,28 +259,30 @@ packages/charts/                      Palette (Export ./theme ohne Recharts), PR
 docs/runs/                            Protokolle einzelner Laeufe
 docs/daten.md                         Bezug, Lizenzen und Ablage der Datensaetze
 docs/screenshots/                     Screenshots fuer dieses README
-.github/workflows/ci.yml              Jobs web und train
+.github/workflows/ci.yml              Jobs web, train und train-core
 ```
 
 ## Tech-Stack
 
-Python 3.12, uv, pandas, NumPy, scikit-learn, NetworkX, pytest, ruff, Makefile; für Schritt 4 PyTorch 2.x und PyTorch Geometric 2.7. Frontend: Next.js 15 (App Router), TypeScript (strict), Tailwind CSS 4, Sigma.js, Recharts, Vitest, Playwright, pnpm Workspaces. CI: GitHub Actions. Hosting: Vercel (statisch).
+Python 3.12, uv, pandas, NumPy, scikit-learn, NetworkX, PyTorch 2.8 (CPU) und PyTorch Geometric 2.7 als Extra `gnn`, pytest, ruff, Makefile. Frontend: Next.js 15 (App Router), TypeScript (strict), Tailwind CSS 4, Sigma.js, Recharts, Vitest, Playwright, pnpm Workspaces. CI: GitHub Actions. Hosting: Vercel (statisch).
 
 ## Grenzen
 
 - Bisher gibt es nur Ergebnisse auf einem synthetischen Netz mit eingebauten Mustern. Sie sagen nichts über reale Transaktionsdaten.
 - Die Annahmen des Generators (Musterformen, schwache Verschiebung der meisten lokalen Merkmale, Hubs im gutartigen Hintergrund) bestimmen, was Baseline und GNN finden können. Ein anderer Generator kann zu einer anderen Rangfolge führen.
-- Die Nachbarschaft ist im Generator stark homophil: Musterknoten hängen fast nur an anderen Musterknoten, und Kreise und Ketten tragen entlang der Kanten fast denselben Betrag (`hopNoiseSd` 0,02). Von den 847 Kanten zwischen zwei gelabelten Knoten verbinden 161 zwei illicit-, 666 zwei licit-Knoten und nur 20 ein gemischtes Paar; 216 von 292 illicit-Knoten haben einen illicit-Nachbarn, aber nur 19 von 2.587 licit-Knoten (`dataset.homophily` in `metrics.json`). Ein Modell mit Nachbarschaft bekommt dieses Signal teilweise geschenkt. Ein Vorsprung von GCN oder GraphSAGE in Schritt 4 wäre auf diesem Netz deshalb zum Teil eingebaut und nicht auf andere Daten übertragbar.
+- Die Nachbarschaft ist im Generator stark homophil: Musterknoten hängen fast nur an anderen Musterknoten, und Kreise und Ketten tragen entlang der Kanten fast denselben Betrag (`hopNoiseSd` 0,02). Von den 847 Kanten zwischen zwei gelabelten Knoten verbinden 161 zwei illicit-, 666 zwei licit-Knoten und nur 20 ein gemischtes Paar; 216 von 292 illicit-Knoten haben einen illicit-Nachbarn, aber nur 19 von 2.587 licit-Knoten (`dataset.homophily` in `metrics.json`). Ein Modell mit Nachbarschaft bekommt dieses Signal teilweise geschenkt. Der gemessene Vorsprung von GCN und GraphSAGE gegen das MLP (0,41 bzw. 0,52 PR-AUC) ist auf diesem Netz deshalb zum Teil eingebaut und nicht auf andere Daten übertragbar.
+- Der Vergleich GNN gegen Baseline vergleicht überwachte mit unüberwachten Verfahren. Erst die Kontrollvariante MLP trennt den Anteil der Labels vom Anteil der Nachbarschaft. Eine Baseline mit fest gemittelten Nachbarmerkmalen ohne Labels (Isolation Forest plus Mittelwert der Nachbarn) fehlt noch.
+- Die GNN-Auswahl stützt sich auf 21 illicit-Knoten im Validierungsteil; bei GraphSAGE lag die gewählte Epoche auf der Obergrenze von 300.
 - Die Labels sind knapp: im synthetischen Netz 76 % `unknown`, darunter bewusst verdeckte Musterknoten, bei Elliptic 77 %. Die Merkmale des Elliptic-Datensatzes sind anonymisiert und nicht dokumentiert.
 - Das Testset ist klein (95 illicit-Testknoten). PR-AUC-Unterschiede in der zweiten Nachkommastelle sind entsprechend unsicher: Schon zufällige Rangfolgen streuen bis 0,1420 (95-%-Quantil). Konfidenzintervalle für die Verfahren werden noch nicht berichtet.
-- Die Reproduzierbarkeit ist unter Windows und Linux geprüft: Die CI hat die eingecheckten Dateien am 06.10.2026 (PR #1) unter Linux mit einer Neuberechnung verglichen und innerhalb der Toleranz 1e-4 bestätigt. macOS ist nicht geprüft.
+- Die Reproduzierbarkeit der Baselines ist unter Windows und Linux geprüft: Die CI hat die eingecheckten Dateien am 06.10.2026 (PR #1) unter Linux mit einer Neuberechnung verglichen und innerhalb der Toleranz 1e-4 bestätigt. Für die GNN-Läufe ist sie bisher nur unter Windows geprüft (zwei getrennte Läufe byte-gleich, `verify` zweimal ohne Abweichung); den Abgleich mit Linux liefert der erste CI-Lauf mit GNN. macOS ist nicht geprüft.
 - Kein Live-Scoring, kein Echtzeitbetrieb; das Projekt ist eine Methodenstudie.
-- Nur zwei GNN-Architekturen sind geplant; GAT und temporale Modelle sind Roadmap.
+- Nur zwei GNN-Architekturen; Kanten ungerichtet. GAT, getrennte Ein- und Ausgangsnachrichten und temporale Modelle sind Roadmap.
 
 ## Roadmap
 
-- v1: Baseline, GCN und GraphSAGE, zeitlicher Split, Export, statische Seite. Stand 06.10.2026: Schritte 1 bis 3 auf dem synthetischen Netz umgesetzt (Generator, zeitlicher Split mit Prüfung, robuste Z-Scores, Isolation Forest mit Graphmaßen, Kennzahlen, Export, Verifikation, Seite `/projects/netzradar` mit Graph-Ausschnitt, Metriktafel und PR-Kurven). Offen: GNN (Schritt 4, geplant), Case-Study (Schritt 5), lokaler Elliptic-Lauf, Datensatzentscheidung IBM-AML, Deployment.
-- v2: temporale GNN-Variante, GAT im Vergleich, Sampling gegen Klassengewichtung, dokumentierte Hyperparametersuche.
+- v1: Baseline, GCN und GraphSAGE, zeitlicher Split, Export, statische Seite. Stand 07.10.2026: Schritte 1 bis 3 auf dem synthetischen Netz umgesetzt (Generator, zeitlicher Split mit Prüfung, robuste Z-Scores, Isolation Forest mit Graphmaßen, Kennzahlen, Export, Verifikation, Seite `/projects/netzradar` mit Graph-Ausschnitt, Metriktafel und PR-Kurven). Schritt 4 umgesetzt: GCN, GraphSAGE und MLP-Kontrolle in Python, Datenvertrag Version 3, `verify` mit GNN; die Seite liest Vertrag 3 und zeigt alle fünf Runs, PR-Kurven, `scoreGnn` mit Verfahren, die Suche am Validierungsteil, die Methodik der GNN und eine aus den Zahlen berechnete Einordnung mit Homophilie-Vorbehalt. Offen für Schritt 4: der erste CI-Lauf mit GNN (Abgleich Windows gegen Linux innerhalb 1e-4, Laufzeit des Jobs `train`). Danach offen: Case-Study (Schritt 5) mit Sensitivität gegen Homophilie, Startknoten auch nach dem GNN-Score (Option S2), lokaler Elliptic-Lauf, Datensatzentscheidung IBM-AML, Deployment.
+- v2: temporale GNN-Variante, GAT im Vergleich, gerichtete Nachrichten (getrennt nach Ein- und Ausgang), Sampling gegen Klassengewichtung, Sensitivität gegen Homophilie (Tarnkanten, gradtreue Umverdrahtung).
 - v3: vorberechnete Erklärungen der markierten Muster in verständlicher Sprache (Sprachmodell im Batch-Modus, keine Laufzeitkosten).
 
 ## Disclaimer

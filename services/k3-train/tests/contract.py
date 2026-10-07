@@ -1,7 +1,7 @@
 import re
 from typing import Any
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 METRICS_KEYS = ["schemaVersion", "generatedAt", "dataset", "split", "evaluation", "seed", "runs"]
 DATASET_KEYS = [
     "name",
@@ -86,8 +86,69 @@ NODE_KEYS = [
     "inDegree",
     "outDegree",
 ]
-METHODS = {"zscore", "iforest", "gcn", "graphsage"}
+NODES_FILE_KEYS = ["schemaVersion", "selection", "scoreGnnMethod", "nodes"]
+METHODS = ["zscore", "iforest", "gcn", "graphsage", "mlp"]
+GNN_METHODS = ["gcn", "graphsage", "mlp"]
+GRAPH_METHODS = ["gcn", "graphsage"]
 FEATURE_SETS = {"local", "local+graph"}
+WEIGHT_RULES = {"trainRatio", "fixed"}
+GNN_HYPERPARAMETER_KEYS = [
+    "architecture",
+    "layers",
+    "hidden",
+    "activation",
+    "dropout",
+    "optimizer",
+    "learningRate",
+    "weightDecay",
+    "loss",
+    "score",
+    "positiveWeight",
+    "positiveWeightRule",
+    "edges",
+    "dtype",
+    "scaling",
+    "features",
+    "maxEpochs",
+    "patience",
+    "selectedEpoch",
+    "selectionMetric",
+    "validationPrAuc",
+    "selectionSteps",
+    "validationSteps",
+    "finalFitSteps",
+    "search",
+    "environment",
+]
+GNN_LOG_HYPERPARAMETER_KEYS = [*GNN_HYPERPARAMETER_KEYS[:-1], "seedSpread", "environment"]
+SCALING_KEYS = [
+    "center",
+    "scale",
+    "madScale",
+    "fallback",
+    "clip",
+    "fitOn",
+    "zeroMadFeatures",
+    "unitScaleFeatures",
+]
+SEARCH_KEYS = [
+    "featureSet",
+    "positiveWeightRule",
+    "positiveWeight",
+    "validationPrAuc",
+    "bestEpoch",
+    "stoppedEpoch",
+    "selected",
+]
+SPREAD_KEYS = ["seeds", "reportedSeed", "prAuc", "mean", "min", "max"]
+ENVIRONMENT_KEYS = [
+    "torch",
+    "torchGeometric",
+    "python",
+    "platform",
+    "threads",
+    "deterministicAlgorithms",
+]
 ISO_TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -216,6 +277,136 @@ def check_metric_values(checker: Checker, run: dict[str, Any], path: str) -> Non
     checker.require(recalls == sorted(recalls), f"{path}.prCurve: nicht nach recall sortiert")
 
 
+def _check_scaling(checker: Checker, scaling: Any, features: Any, path: str) -> None:
+    if not checker.keys(scaling, SCALING_KEYS, path):
+        return
+    checker.require(scaling["center"] == "median", f"{path}.center")
+    checker.require(scaling["scale"] == "mad", f"{path}.scale")
+    checker.require(scaling["madScale"] == 1.4826, f"{path}.madScale")
+    checker.require(scaling["fallback"] == ["std", "one"], f"{path}.fallback")
+    checker.number(scaling["clip"], f"{path}.clip", 0.0)
+    checker.require(scaling["fitOn"] == "train", f"{path}.fitOn")
+    names = features if isinstance(features, list) else []
+    for key in ("zeroMadFeatures", "unitScaleFeatures"):
+        checker.require(
+            isinstance(scaling[key], list) and all(name in names for name in scaling[key]),
+            f"{path}.{key}",
+        )
+
+
+def _check_search(checker: Checker, search: Any, path: str) -> dict[str, Any] | None:
+    if not isinstance(search, list) or not search:
+        checker.errors.append(f"{path}: Liste erwartet")
+        return None
+    selected = []
+    for index, entry in enumerate(search):
+        entry_path = f"{path}[{index}]"
+        if not checker.keys(entry, SEARCH_KEYS, entry_path):
+            continue
+        checker.require(entry["featureSet"] in FEATURE_SETS, f"{entry_path}.featureSet")
+        checker.require(entry["positiveWeightRule"] in WEIGHT_RULES, f"{entry_path}.rule")
+        checker.number(entry["positiveWeight"], f"{entry_path}.positiveWeight", 0.0)
+        checker.number(entry["validationPrAuc"], f"{entry_path}.validationPrAuc", 0.0, 1.0)
+        checker.integer(entry["bestEpoch"], f"{entry_path}.bestEpoch", 1)
+        checker.integer(entry["stoppedEpoch"], f"{entry_path}.stoppedEpoch", 1)
+        checker.require(
+            isinstance(entry["bestEpoch"], int)
+            and isinstance(entry["stoppedEpoch"], int)
+            and entry["bestEpoch"] <= entry["stoppedEpoch"],
+            f"{entry_path}: bestEpoch nach stoppedEpoch",
+        )
+        checker.require(isinstance(entry["selected"], bool), f"{entry_path}.selected")
+        if entry["selected"] is True:
+            selected.append(entry)
+    checker.require(len(selected) == 1, f"{path}: genau ein gewählter Kandidat erwartet")
+    entries = [entry for entry in search if isinstance(entry, dict)]
+    pairs = [(entry.get("featureSet"), entry.get("positiveWeightRule")) for entry in entries]
+    checker.require(len(pairs) == len(set(pairs)), f"{path}: Kandidat doppelt")
+    values = [entry.get("validationPrAuc") for entry in entries]
+    if len(selected) == 1 and all(isinstance(value, int | float) for value in values):
+        first_best = entries[values.index(max(values))]
+        checker.require(
+            first_best is selected[0], f"{path}: gewählt ist nicht der erste beste Kandidat"
+        )
+    return selected[0] if len(selected) == 1 else None
+
+
+def check_seed_spread(checker: Checker, spread: Any, path: str) -> None:
+    if not checker.keys(spread, SPREAD_KEYS, path):
+        return
+    seeds = spread["seeds"]
+    values = spread["prAuc"]
+    checker.require(isinstance(seeds, list) and len(seeds) >= 1, f"{path}.seeds")
+    checker.require(
+        isinstance(values, list) and isinstance(seeds, list) and len(values) == len(seeds),
+        f"{path}.prAuc: Länge passt nicht zu seeds",
+    )
+    checker.require(isinstance(seeds, list) and spread["reportedSeed"] in seeds, f"{path}.seed")
+    for key in ("mean", "min", "max"):
+        checker.number(spread[key], f"{path}.{key}", 0.0, 1.0)
+    if isinstance(values, list) and values:
+        for index, value in enumerate(values):
+            checker.number(value, f"{path}.prAuc[{index}]", 0.0, 1.0)
+        checker.require(spread["min"] == min(values), f"{path}.min")
+        checker.require(spread["max"] == max(values), f"{path}.max")
+
+
+def check_gnn_hyperparameters(
+    checker: Checker, run: dict[str, Any], path: str, with_spread: bool
+) -> None:
+    hyperparameters = run["hyperparameters"]
+    expected = GNN_LOG_HYPERPARAMETER_KEYS if with_spread else GNN_HYPERPARAMETER_KEYS
+    if not checker.keys(hyperparameters, expected, path):
+        return
+    checker.require(hyperparameters["layers"] == 2, f"{path}.layers")
+    checker.require(hyperparameters["hidden"] == 64, f"{path}.hidden")
+    checker.require(hyperparameters["dropout"] == 0.5, f"{path}.dropout")
+    checker.require(hyperparameters["optimizer"] == "adam", f"{path}.optimizer")
+    checker.require(hyperparameters["learningRate"] == 0.01, f"{path}.learningRate")
+    checker.require(hyperparameters["weightDecay"] == 0.0005, f"{path}.weightDecay")
+    checker.require(hyperparameters["loss"] == "weightedCrossEntropy", f"{path}.loss")
+    checker.number(hyperparameters["positiveWeight"], f"{path}.positiveWeight", 0.0)
+    checker.require(hyperparameters["positiveWeightRule"] in WEIGHT_RULES, f"{path}.rule")
+    edges = "none" if run["method"] == "mlp" else "undirected"
+    checker.require(hyperparameters["edges"] == edges, f"{path}.edges")
+    checker.require(hyperparameters["dtype"] in ("float64", "float32"), f"{path}.dtype")
+    _check_scaling(
+        checker, hyperparameters["scaling"], hyperparameters["features"], f"{path}.scaling"
+    )
+    checker.integer(hyperparameters["maxEpochs"], f"{path}.maxEpochs", 1)
+    checker.integer(hyperparameters["patience"], f"{path}.patience", 1)
+    checker.integer(hyperparameters["selectedEpoch"], f"{path}.selectedEpoch", 1)
+    checker.require(
+        isinstance(hyperparameters["selectedEpoch"], int)
+        and isinstance(hyperparameters["maxEpochs"], int)
+        and hyperparameters["selectedEpoch"] <= hyperparameters["maxEpochs"],
+        f"{path}.selectedEpoch: größer als maxEpochs",
+    )
+    checker.require(
+        hyperparameters["selectionMetric"] == "validationPrAuc", f"{path}.selectionMetric"
+    )
+    checker.number(hyperparameters["validationPrAuc"], f"{path}.validationPrAuc", 0.0, 1.0)
+    for key in ("selectionSteps", "validationSteps", "finalFitSteps"):
+        _check_range(checker, hyperparameters[key], f"{path}.{key}")
+    selected = _check_search(checker, hyperparameters["search"], f"{path}.search")
+    if selected is not None:
+        checker.require(selected["featureSet"] == run["featureSet"], f"{path}: featureSet")
+        checker.require(
+            selected["positiveWeightRule"] == hyperparameters["positiveWeightRule"],
+            f"{path}: positiveWeightRule",
+        )
+        checker.require(
+            selected["bestEpoch"] == hyperparameters["selectedEpoch"], f"{path}: selectedEpoch"
+        )
+        checker.require(
+            selected["validationPrAuc"] == hyperparameters["validationPrAuc"],
+            f"{path}: validationPrAuc",
+        )
+    if with_spread:
+        check_seed_spread(checker, hyperparameters["seedSpread"], f"{path}.seedSpread")
+    checker.keys(hyperparameters["environment"], ENVIRONMENT_KEYS, f"{path}.environment")
+
+
 def check_run(checker: Checker, run: Any, path: str) -> None:
     if not checker.keys(run, RUN_KEYS, path):
         return
@@ -227,6 +418,8 @@ def check_run(checker: Checker, run: Any, path: str) -> None:
         isinstance(run["date"], str) and bool(ISO_DATE.match(run["date"])), f"{path}.date"
     )
     checker.require(isinstance(run["hyperparameters"], dict), f"{path}.hyperparameters")
+    if run["method"] in GNN_METHODS and isinstance(run["hyperparameters"], dict):
+        check_gnn_hyperparameters(checker, run, f"{path}.hyperparameters", with_spread=False)
     check_metric_values(checker, run, path)
 
 
@@ -247,6 +440,12 @@ def validate_metrics(payload: Any) -> list[str]:
     checker.require(isinstance(payload["runs"], list) and payload["runs"], "metrics.runs")
     for index, run in enumerate(payload["runs"]):
         check_run(checker, run, f"metrics.runs[{index}]")
+    methods = [run.get("method") for run in payload["runs"] if isinstance(run, dict)]
+    checker.require(len(methods) == len(set(methods)), "metrics.runs: Verfahren doppelt")
+    known = [method for method in methods if method in METHODS]
+    checker.require(
+        known == sorted(known, key=METHODS.index), "metrics.runs: Reihenfolge wie METHODS"
+    )
     return checker.errors
 
 
@@ -255,16 +454,31 @@ def validate_run_log(payload: Any) -> list[str]:
     if not checker.keys(payload, RUN_LOG_KEYS, "run"):
         return checker.errors
     checker.require(payload["schemaVersion"] == SCHEMA_VERSION, "run.schemaVersion")
+    checker.require(payload["method"] in METHODS, "run.method")
     check_dataset(checker, payload["dataset"], "run.dataset")
     check_split(checker, payload["split"], "run.split")
     check_evaluation(checker, payload["evaluation"], "run.evaluation")
+    if payload["method"] in GNN_METHODS and isinstance(payload["hyperparameters"], dict):
+        check_gnn_hyperparameters(checker, payload, "run.hyperparameters", with_spread=True)
     check_metric_values(checker, payload, "run")
     return checker.errors
 
 
+def expected_score_gnn_method(metrics: dict[str, Any]) -> str | None:
+    graph_runs = [run for run in metrics["runs"] if run["method"] in GRAPH_METHODS]
+    if not graph_runs:
+        return None
+    graph_runs.sort(key=lambda run: GRAPH_METHODS.index(run["method"]))
+    best = graph_runs[0]
+    for run in graph_runs[1:]:
+        if run["hyperparameters"]["validationPrAuc"] > best["hyperparameters"]["validationPrAuc"]:
+            best = run
+    return best["method"]
+
+
 def validate_nodes(payload: Any) -> list[str]:
     checker = Checker()
-    if not checker.keys(payload, ["schemaVersion", "selection", "nodes"], "nodes"):
+    if not checker.keys(payload, NODES_FILE_KEYS, "nodes"):
         return checker.errors
     checker.require(payload["schemaVersion"] == SCHEMA_VERSION, "nodes.schemaVersion")
     selection = payload["selection"]
@@ -272,6 +486,10 @@ def validate_nodes(payload: Any) -> list[str]:
         checker.require(selection["scoreField"] == "scoreIforest", "selection.scoreField")
         checker.require(selection["pool"] == "test", "selection.pool")
         checker.require(isinstance(selection["truncated"], bool), "selection.truncated")
+    gnn_method = payload["scoreGnnMethod"]
+    checker.require(
+        gnn_method is None or gnn_method in GRAPH_METHODS, "nodes.scoreGnnMethod: gcn, graphsage"
+    )
     for index, node in enumerate(payload["nodes"]):
         path = f"nodes[{index}]"
         if not checker.keys(node, NODE_KEYS, path):
@@ -283,7 +501,10 @@ def validate_nodes(payload: Any) -> list[str]:
         checker.integer(node["timeStep"], f"{path}.timeStep", 1)
         checker.number(node["scoreZscore"], f"{path}.scoreZscore", 0.0)
         checker.number(node["scoreIforest"], f"{path}.scoreIforest")
-        checker.require(node["scoreGnn"] is None, f"{path}.scoreGnn: null erwartet")
+        if gnn_method is None:
+            checker.require(node["scoreGnn"] is None, f"{path}.scoreGnn: null erwartet")
+        else:
+            checker.number(node["scoreGnn"], f"{path}.scoreGnn")
         rank = node["seedRank"]
         checker.require(
             rank is None or (isinstance(rank, int) and 1 <= rank <= 50), f"{path}.seedRank"

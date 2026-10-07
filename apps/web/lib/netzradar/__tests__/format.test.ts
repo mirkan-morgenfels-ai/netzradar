@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   LABEL_TEXT,
+  METHOD_KIND_TEXT,
+  METHOD_SHORT_TEXT,
+  METHOD_TEXT,
   formatDecimal,
   formatInteger,
   formatIsoDate,
@@ -9,7 +12,9 @@ import {
   formatPlainNumber,
   formatShare,
   formatStepRange,
+  joinList,
 } from "../format";
+import { METHODS } from "../types";
 
 const NBSP = " ";
 
@@ -73,5 +78,31 @@ describe("dates and ranges", () => {
 describe("LABEL_TEXT", () => {
   it("names the labels in German", () => {
     expect(LABEL_TEXT).toEqual({ illicit: "auffällig", licit: "unauffällig", unknown: "unbekannt" });
+  });
+});
+
+describe("method texts", () => {
+  it("names every method of the contract", () => {
+    for (const texts of [METHOD_TEXT, METHOD_SHORT_TEXT, METHOD_KIND_TEXT]) {
+      expect(Object.keys(texts)).toEqual([...METHODS]);
+    }
+    expect(METHOD_TEXT.mlp).toBe("MLP ohne Kanten (Kontrolle)");
+    expect(METHOD_SHORT_TEXT.graphsage).toBe("GraphSAGE");
+  });
+});
+
+describe("joinList", () => {
+  it("joins German lists with commas and und", () => {
+    expect(joinList([])).toBe("");
+    expect(joinList(["GCN"])).toBe("GCN");
+    expect(joinList(["GCN", "GraphSAGE"])).toBe("GCN und GraphSAGE");
+    expect(joinList(["Z-Scores", "GCN", "MLP"])).toBe("Z-Scores, GCN und MLP");
+  });
+});
+
+describe("negative decimals", () => {
+  it("keeps the sign of logit differences", () => {
+    expect(formatDecimal(-19.9567)).toBe("-19,9567");
+    expect(formatDecimal(17.2586)).toBe("17,2586");
   });
 });

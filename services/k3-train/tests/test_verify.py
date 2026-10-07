@@ -6,7 +6,7 @@ import pytest
 
 from k3_train import verify as verify_module
 from k3_train.jsonio import write_json
-from k3_train.verify import Recomputation, compare, verify
+from k3_train.verify import REQUIRE_GNN_ENV, Recomputation, compare, verify
 
 PAYLOAD: dict[str, Any] = {
     "schemaVersion": 2,
@@ -31,6 +31,14 @@ def test_timestamps_and_dates_are_ignored() -> None:
     assert compare(PAYLOAD, other) == []
 
 
+def test_environment_is_ignored() -> None:
+    left = {"hyperparameters": {"selectedEpoch": 3, "environment": {"torch": "2.8.0+cpu"}}}
+    right = {"hyperparameters": {"selectedEpoch": 3, "environment": {"torch": "2.8.0"}}}
+    assert compare(left, right) == []
+    right["hyperparameters"]["selectedEpoch"] = 4
+    assert compare(left, right) == ["$.hyperparameters.selectedEpoch: 3 erwartet, 4 gefunden"]
+
+
 def test_floats_are_compared_with_tolerance() -> None:
     close = copy.deepcopy(PAYLOAD)
     close["runs"][0]["prAuc"] = 0.50005
@@ -38,6 +46,16 @@ def test_floats_are_compared_with_tolerance() -> None:
     far["runs"][0]["prAuc"] = 0.5002
     assert compare(PAYLOAD, close) == []
     assert compare(PAYLOAD, far) == ["$.runs[0].prAuc: 0.5 erwartet, 0.5002 gefunden"]
+
+
+def test_one_rounding_step_of_four_digit_values_is_within_tolerance() -> None:
+    assert abs(0.1234 - 0.1235) > 1e-4
+    assert compare(0.1234, 0.1235) == []
+    assert compare(5.0001, 5.0002) == []
+    assert compare(12.3456, 12.3457) == []
+    assert compare(-19.9567, -19.9568) == []
+    assert compare(0.1234, 0.1236) == ["$: 0.1234 erwartet, 0.1236 gefunden"]
+    assert compare(-19.9567, -19.9569) == ["$: -19.9567 erwartet, -19.9569 gefunden"]
 
 
 def test_integers_strings_keys_and_lengths_must_match() -> None:
@@ -62,11 +80,76 @@ def write_committed(export_dir: Path, runs_dir: Path) -> None:
 
 @pytest.fixture
 def committed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
-    monkeypatch.setattr(verify_module, "recompute_synthetic", lambda: RECOMPUTED)
+    monkeypatch.delenv(REQUIRE_GNN_ENV, raising=False)
+    monkeypatch.setattr(verify_module, "recompute_synthetic", lambda include_gnn=False: RECOMPUTED)
     export_dir = tmp_path / "k3"
     runs_dir = tmp_path / "runs"
     write_committed(export_dir, runs_dir)
     return export_dir, runs_dir
+
+
+def test_gnn_runs_are_recomputed_when_present(
+    committed: tuple[Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    export_dir, runs_dir = committed
+    requested: list[bool] = []
+
+    def recompute(include_gnn: bool = False) -> Recomputation:
+        requested.append(include_gnn)
+        return RECOMPUTED
+
+    monkeypatch.setattr(verify_module, "recompute_synthetic", recompute)
+    monkeypatch.setattr(verify_module, "gnn_available", lambda: True)
+    assert verify(export_dir, runs_dir) == 0
+    with_gnn = copy.deepcopy(PAYLOAD)
+    with_gnn["runs"].append({"method": "gcn", "date": "2026-01-01", "prAuc": 0.5})
+    write_json(export_dir / "metrics.json", with_gnn)
+    assert verify(export_dir, runs_dir) == 1
+    assert requested == [False, True]
+
+
+def test_missing_torch_with_gnn_runs_fails_with_a_hint(
+    committed: tuple[Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    export_dir, runs_dir = committed
+    monkeypatch.setattr(verify_module, "gnn_available", lambda: False)
+    with_gnn = copy.deepcopy(PAYLOAD)
+    with_gnn["runs"].append({"method": "mlp", "date": "2026-01-01", "prAuc": 0.5})
+    write_json(export_dir / "metrics.json", with_gnn)
+    assert verify(export_dir, runs_dir) == 1
+    assert "uv sync --extra gnn" in capsys.readouterr().err
+    write_json(export_dir / "metrics.json", PAYLOAD)
+    assert verify(export_dir, runs_dir) == 0
+
+
+def test_required_gnn_runs_must_be_committed(
+    committed: tuple[Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    export_dir, runs_dir = committed
+    requested: list[bool] = []
+
+    def recompute(include_gnn: bool = False) -> Recomputation:
+        requested.append(include_gnn)
+        return RECOMPUTED
+
+    monkeypatch.setattr(verify_module, "recompute_synthetic", recompute)
+    monkeypatch.setattr(verify_module, "gnn_available", lambda: True)
+    monkeypatch.setenv(REQUIRE_GNN_ENV, "1")
+    assert verify(export_dir, runs_dir) == 1
+    assert "keine GNN-Runs" in capsys.readouterr().err
+    assert requested == []
+    monkeypatch.setenv(REQUIRE_GNN_ENV, "0")
+    assert verify(export_dir, runs_dir) == 0
+    with_gnn = copy.deepcopy(PAYLOAD)
+    with_gnn["runs"].append({"method": "graphsage", "date": "2026-01-01", "prAuc": 0.5})
+    write_json(export_dir / "metrics.json", with_gnn)
+    monkeypatch.setenv(REQUIRE_GNN_ENV, "1")
+    assert verify(export_dir, runs_dir) == 1
+    assert requested == [False, True]
 
 
 def test_verify_passes_for_matching_files(committed: tuple[Path, Path]) -> None:

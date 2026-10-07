@@ -151,12 +151,13 @@ Das Repository liegt in OneDrive. Die `.gitignore` hält Rohdaten nur aus Git he
   ```
 
 - Statt der Umgebungsvariablen geht bei `data`, `baseline` und `export` die Option `--data-dir <Datenordner>`; sie hat Vorrang vor `K3_DATA_DIR`. Mit make: `make data DATASET=elliptic DATA_DIR=<Datenordner>`, ebenso bei `make baseline`. Liegen die Rohdaten woanders, nimmt `data` sie per `--raw-dir <Ordner>` (make: `RAW_DIR=<Ordner>`).
-- Mit gesetztem Datenordner landen Rohdaten, aufbereitete Dateien (`processed/elliptic/`: `nodes.csv` mit allen Merkmalen, `edges.csv`, `meta.json`, Scores) und die Elliptic-Laufprotokolle (`processed/elliptic/runs/`) dort und nicht im Repo-Ordner. Ein Test prüft, dass `data --data-dir` nichts unter `services/k3-train/data/` anlegt.
+- Mit gesetztem Datenordner landen Rohdaten, aufbereitete Dateien (`processed/elliptic/`: `nodes.csv` mit allen Merkmalen, `edges.csv`, `meta.json`, Baseline-Scores in `scores.csv`, Graphmaße in `measures.csv`, GNN-Ergebnisse in `gnn.json` und `gnn_scores.csv`) und die Elliptic-Laufprotokolle aller Verfahren einschließlich `gcn`, `graphsage` und `mlp` (`processed/elliptic/runs/`) dort und nicht im Repo-Ordner. Ein Test prüft, dass `data --data-dir` nichts unter `services/k3-train/data/` anlegt.
+- Für die GNN auf Elliptic: `uv run --extra gnn k3-train gnn --dataset elliptic --data-dir <Datenordner>` nach `baseline`. Eingabe sind nur die 93 lokalen Merkmale `f_*`, wahlweise mit den 4 Graphmaßen; die 72 aggregierten `a_*` bleiben außen vor, damit der Vergleich mit und ohne Nachbarschaft sauber bleibt. Bisher nicht gelaufen.
 - `export` und `verify` schreiben bzw. lesen weiterhin nur `data/k3/` und `docs/runs/` im Repository; der Export von Elliptic bleibt gesperrt.
 ## Prüfung vor jedem Commit
 
 - `git status --short` zeigt nichts unter `services/k3-train/data/`.
 - `git check-ignore -v services/k3-train/data/raw/elliptic/elliptic_txs_features.csv` nennt die passende `.gitignore`-Regel.
 - `data/k3/metrics.json` hat `dataset.name` = `"synthetic"`, solange keine andere Freigabe beschlossen ist.
-- `docs/runs/` enthält nur Dateien `<datum>_synthetic_<verfahren>.json`.
+- `docs/runs/` enthält nur Dateien `<datum>_synthetic_<verfahren>.json` (Verfahren `zscore`, `iforest`, `gcn`, `graphsage`, `mlp`).
 - Knoten-IDs in `data/k3/nodes.json` haben die synthetische Form `tx000001`.

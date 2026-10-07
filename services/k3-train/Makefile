@@ -1,13 +1,15 @@
-.PHONY: all data baseline export verify test lint
+.PHONY: all data baseline gnn export verify test lint
 
 DATA_ARGS = $(if $(DATA_DIR),--data-dir "$(DATA_DIR)")
 DATASET_ARGS = $(if $(DATASET),--dataset $(DATASET))
+GNN_RUN = uv run --extra gnn
 
 all: lint test verify
 	uv run k3-train data --synth $(DATA_ARGS)
 	uv run k3-train baseline $(DATA_ARGS)
+	$(GNN_RUN) k3-train gnn $(DATA_ARGS)
 	uv run k3-train export $(DATA_ARGS)
-	uv run k3-train verify
+	$(GNN_RUN) k3-train verify
 
 data:
 ifeq ($(SYNTH),1)
@@ -19,14 +21,17 @@ endif
 baseline:
 	uv run k3-train baseline $(DATASET_ARGS) $(DATA_ARGS)
 
+gnn:
+	$(GNN_RUN) k3-train gnn $(DATASET_ARGS) $(DATA_ARGS)
+
 export:
 	uv run k3-train export $(DATASET_ARGS) $(DATA_ARGS)
 
 verify:
-	uv run k3-train verify
+	$(GNN_RUN) k3-train verify
 
 test:
-	uv run pytest
+	$(GNN_RUN) pytest
 
 lint:
 	uv run ruff check .

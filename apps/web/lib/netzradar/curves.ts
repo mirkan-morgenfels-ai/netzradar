@@ -24,6 +24,7 @@ export const METHOD_CURVE_STYLES: Record<Method, CurveStyle> = {
   iforest: { color: CHART_COLORS.wine, dash: "8 3" },
   gcn: { color: CHART_COLORS.moss, dash: "2 3" },
   graphsage: { color: CHART_COLORS.ink, dash: "8 3 2 3" },
+  mlp: { color: CHART_COLORS.stone, dash: "12 4" },
 };
 
 export const PREVALENCE_LEVEL_STYLE: CurveStyle = { color: CHART_COLORS.stone, dash: "4 4" };

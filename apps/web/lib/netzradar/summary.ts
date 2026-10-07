@@ -1,16 +1,101 @@
 import { formatPlainNumber } from "./format";
 import {
+  BASELINE_METHODS,
+  GRAPH_METHODS,
+  LEARNED_METHODS,
   METHODS,
   type EvaluationInfo,
+  type GraphMethod,
   type JsonObject,
   type JsonValue,
   type LabelCounts,
+  type LearnedMethod,
   type Method,
   type NetNode,
   type Run,
+  type SearchCandidate,
+  type Training,
 } from "./types";
 
-export const PENDING_METHODS: readonly Method[] = ["gcn", "graphsage"];
+export const PENDING_METHODS: readonly Method[] = LEARNED_METHODS;
+
+export type Comparison = "higher" | "lower" | "similar";
+
+export function isLearnedMethod(method: Method): method is LearnedMethod {
+  return (LEARNED_METHODS as readonly Method[]).includes(method);
+}
+
+export function isGraphMethod(method: Method): method is GraphMethod {
+  return (GRAPH_METHODS as readonly Method[]).includes(method);
+}
+
+export function findRun(runs: readonly Run[], method: Method): Run | null {
+  return runs.find((run) => run.method === method) ?? null;
+}
+
+export function expectedScoreGnnMethod(runs: readonly Run[]): GraphMethod | null {
+  let best: GraphMethod | null = null;
+  let bestValue = -Infinity;
+  for (const method of GRAPH_METHODS) {
+    const training = findRun(runs, method)?.training;
+    if (!training) continue;
+    if (best === null || training.validationPrAuc > bestValue) {
+      best = method;
+      bestValue = training.validationPrAuc;
+    }
+  }
+  return best;
+}
+
+export function bestRunAmong(runs: readonly Run[], methods: readonly Method[]): Run | null {
+  return bestRun(runs.filter((run) => methods.includes(run.method)));
+}
+
+export function bestBaseline(runs: readonly Run[]): Run | null {
+  return bestRunAmong(runs, BASELINE_METHODS);
+}
+
+export function comparisonMargin(evaluation: EvaluationInfo): number {
+  return evaluation.randomPrAucQ95 - evaluation.randomPrAucExpected;
+}
+
+export function compareScores(value: number, reference: number, margin: number): Comparison {
+  const difference = value - reference;
+  if (difference > margin) return "higher";
+  if (difference < -margin) return "lower";
+  return "similar";
+}
+
+export function bestAccuracyAtFlagged(flagged: number, evaluation: EvaluationInfo): number {
+  const labelled = labelledTestCount(evaluation);
+  if (labelled === 0) return Number.NaN;
+  return (labelled - Math.abs(evaluation.testPositives - flagged)) / labelled;
+}
+
+export function averagedSeparation(shift: number, neighbours: number, otherClassShare = 0): number {
+  return (shift * (1 + neighbours * (1 - 2 * otherClassShare))) / Math.sqrt(neighbours + 1);
+}
+
+export function selectedCandidate(training: Training): SearchCandidate | null {
+  return training.search.find((candidate) => candidate.selected) ?? null;
+}
+
+export function reachedEpochLimit(training: Training): boolean {
+  return training.selectedEpoch >= training.maxEpochs;
+}
+
+export function searchWeight(runs: readonly Run[], rule: SearchCandidate["positiveWeightRule"]): number | null {
+  for (const run of runs) {
+    const candidate = run.training?.search.find((entry) => entry.positiveWeightRule === rule);
+    if (candidate) return candidate.positiveWeight;
+  }
+  return null;
+}
+
+export function finalTrainRatioWeight(runs: readonly Run[]): number | null {
+  const run = runs.find((entry) => entry.training?.positiveWeightRule === "trainRatio");
+  return run?.training?.positiveWeight ?? null;
+}
 
 export interface MeasuredRow {
   kind: "measured";
@@ -70,9 +155,16 @@ function describeValue(value: JsonValue): string {
   return value;
 }
 
+function isJsonObject(value: JsonValue): value is JsonObject {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 function flattenEntry(key: string, value: JsonValue): Array<[string, string]> {
-  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+  if (isJsonObject(value)) {
     return Object.entries(value).flatMap(([child, item]) => flattenEntry(`${key}.${child}`, item));
+  }
+  if (Array.isArray(value) && value.some(isJsonObject)) {
+    return value.flatMap((item, index) => flattenEntry(`${key}[${index}]`, item));
   }
   return [[key, describeValue(value)]];
 }

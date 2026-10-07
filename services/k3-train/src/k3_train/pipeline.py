@@ -1,7 +1,8 @@
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import pandas as pd
 
@@ -22,8 +23,15 @@ from k3_train.metrics import evaluate_scores, evaluation_summary, evaluation_tar
 from k3_train.split import check_split, split_for, split_masks
 
 DEFAULT_SEED = 42
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
+METHODS = ("zscore", "iforest", "gcn", "graphsage", "mlp")
 SCORE_COLUMNS = ("score_zscore", "score_iforest")
+
+
+class RunContext(Protocol):
+    dataset: dict[str, Any]
+    split: dict[str, Any]
+    evaluation: dict[str, Any]
 
 
 @dataclass
@@ -44,6 +52,9 @@ class BaselineOutput:
             "seed": self.seed,
             "runs": self.runs,
         }
+
+    def run_logs(self) -> list[dict[str, Any]]:
+        return [run_log(self, run) for run in self.runs]
 
 
 def utc_now() -> datetime:
@@ -127,7 +138,21 @@ def run_baseline(dataset: Dataset, run_date: str, seed: int = DEFAULT_SEED) -> B
     )
 
 
-def metrics_payload(output: BaselineOutput, generated_at: str) -> dict[str, Any]:
+def ordered_runs(runs: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    methods = [run["method"] for run in runs]
+    unknown = sorted(set(methods) - set(METHODS))
+    if unknown:
+        raise ValueError(f"Unbekannte Verfahren: {unknown}")
+    if len(set(methods)) != len(methods):
+        raise ValueError(f"Verfahren doppelt: {methods}")
+    return sorted(runs, key=lambda run: METHODS.index(run["method"]))
+
+
+def metrics_payload(
+    output: BaselineOutput,
+    generated_at: str,
+    extra_runs: Sequence[dict[str, Any]] = (),
+) -> dict[str, Any]:
     return {
         "schemaVersion": SCHEMA_VERSION,
         "generatedAt": generated_at,
@@ -135,11 +160,11 @@ def metrics_payload(output: BaselineOutput, generated_at: str) -> dict[str, Any]
         "split": output.split,
         "evaluation": output.evaluation,
         "seed": output.seed,
-        "runs": output.runs,
+        "runs": ordered_runs([*output.runs, *extra_runs]),
     }
 
 
-def run_log(output: BaselineOutput, run: dict[str, Any]) -> dict[str, Any]:
+def run_log(output: RunContext, run: dict[str, Any]) -> dict[str, Any]:
     return {
         "schemaVersion": SCHEMA_VERSION,
         "method": run["method"],
