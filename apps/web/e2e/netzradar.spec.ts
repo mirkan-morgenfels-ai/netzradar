@@ -43,7 +43,7 @@ const SHORT_NAME: Record<string, string> = {
   mlp: "MLP (ohne Kanten)",
 };
 const NEIGHBOURHOOD_SHARE = "der größere Teil des Vorsprungs der Graph Neural Networks aus der Nachbarschaft";
-const INK = "rgb(17, 17, 17)";
+const INK = "rgb(15, 27, 45)";
 const NODES = JSON.parse(readFileSync(path.join(DATA_DIR, "nodes.json"), "utf8")) as {
   scoreGnnMethod: "gcn" | "graphsage" | null;
   nodes: ExportedNode[];
@@ -125,7 +125,8 @@ test("NetzRadar page renders headline, metrics, graph and node details without l
   await page.waitForLoadState("load");
 
   await expect(page.getByRole("heading", { level: 1, name: "NetzRadar" })).toBeVisible();
-  await expect(page.getByText("Projekt K3", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "NetzRadar" })).toHaveCSS("font-family", /Cormorant/);
+  await expect(page.getByText("Projekt K3 · Graph-ML", { exact: true })).toBeVisible();
 
   const metricsTable = page.getByTestId("metrics-table");
   await expect(metricsTable).toBeVisible();
@@ -317,7 +318,7 @@ for (const width of AXE_WIDTHS) {
 
 test("start page links to the NetzRadar page", async ({ page }) => {
   await page.goto("/");
-  const link = page.getByTestId("project-netzradar").getByRole("link", { name: /^Zum Projekt/ });
+  const link = page.getByTestId("project-netzradar").getByRole("link", { name: /^Live ansehen/ });
   await expect(link).toHaveAttribute("href", "/projects/netzradar");
   await link.click();
   await expect(page).toHaveURL(/\/projects\/netzradar$/);
@@ -351,7 +352,15 @@ test("status names the run date and the page avoids internal jargon", async ({ p
 test("section links jump to the assessment and the limits", async ({ page }) => {
   await page.goto("/projects/netzradar");
   const nav = page.getByRole("navigation", { name: "Abschnitte" });
-  await expect(nav.getByRole("link")).toHaveText(["Daten", "Ergebnisse", "Methodik", "Einordnung", "Grenzen"]);
+  await expect(nav.getByRole("link")).toHaveText([
+    "Überblick",
+    "Daten",
+    "Netzwerk",
+    "Ergebnisse",
+    "Methodik",
+    "Einordnung",
+    "Grenzen",
+  ]);
   const targets = await nav
     .getByRole("link")
     .evaluateAll((links) => links.map((link) => link.getAttribute("href")?.slice(1) ?? ""));
@@ -373,6 +382,45 @@ test("section links jump to the assessment and the limits", async ({ page }) => 
   await expect(page.getByRole("heading", { level: 2, name: "Grenzen" })).toBeInViewport();
 });
 
+test("start node table is one tab stop with arrow keys inside", async ({ page }) => {
+  await page.goto("/projects/netzradar");
+  const buttons = page.getByTestId("top-nodes-table").getByRole("button");
+  await expect(buttons.first()).toHaveAttribute("tabindex", "0");
+  await expect(page.getByTestId("top-nodes-table").locator("button[tabindex='0']")).toHaveCount(1);
+  await buttons.first().focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(buttons.nth(1)).toBeFocused();
+  await expect(buttons.nth(1)).toHaveAttribute("tabindex", "0");
+  await page.keyboard.press("End");
+  await expect(buttons.last()).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("node-detail-id")).toHaveText((await buttons.last().textContent()) ?? "");
+  await expect(page.getByTestId("top-nodes-table").locator("button[tabindex='0']")).toHaveCount(1);
+});
+
+test("sticky detail panel fits a 1280 x 720 screen and the method index opens its section", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto("/projects/netzradar");
+  await expect(page.getByTestId("graph-view")).toHaveAttribute("data-state", "ready", { timeout: 30_000 });
+  await page.getByTestId("top-node-row").first().click();
+  const reset = page.getByRole("button", { name: "Auswahl aufheben" });
+  await reset.scrollIntoViewIfNeeded();
+  await expect(reset).toBeInViewport();
+  const panel = await page.getByTestId("node-detail").evaluate((element) => {
+    const box = element.parentElement?.getBoundingClientRect();
+    return { top: box?.top ?? 0, bottom: box?.bottom ?? 0 };
+  });
+  expect(panel.bottom - panel.top).toBeLessThanOrEqual(720);
+
+  const index = page.getByTestId("method-index");
+  const target = page.locator("#methodik-gcn-graphsage");
+  await expect(target).not.toHaveAttribute("open", /.*/);
+  await index.getByRole("link", { name: "GCN und GraphSAGE" }).click();
+  await expect(page).toHaveURL(/#methodik-gcn-graphsage$/);
+  await expect(target).toHaveAttribute("open", "");
+  await expect(page.getByTestId("chain-example")).toBeVisible();
+});
+
 test("phone layout keeps the label table complete and the graph controls off the graph", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/projects/netzradar");
@@ -389,6 +437,14 @@ test("phone layout keeps the label table complete and the graph controls off the
   expect(canvas).not.toBeNull();
   expect(controls).not.toBeNull();
   expect(controls?.y ?? 0).toBeGreaterThanOrEqual((canvas?.y ?? 0) + (canvas?.height ?? 0));
+
+  const metrics = page.getByRole("region", { name: "Kennzahlen je Verfahren auf den Testknoten mit Label" });
+  await metrics.scrollIntoViewIfNeeded();
+  const viewport = await metrics.boundingBox();
+  const mainValue = await page.getByTestId(`pr-auc-${METRICS.runs[0]?.method ?? "zscore"}`).boundingBox();
+  expect(viewport).not.toBeNull();
+  expect(mainValue).not.toBeNull();
+  expect((mainValue?.x ?? 0) + (mainValue?.width ?? 0)).toBeLessThanOrEqual((viewport?.x ?? 0) + (viewport?.width ?? 0));
 });
 
 test.describe("without JavaScript", () => {

@@ -21,32 +21,34 @@ const RUNS: Run[] = [
 
 const ALL_RUNS: Run[] = METHODS.map((method, index) => run(method, 0.1 * (index + 1)));
 
-function isBluish(hex: string): boolean {
-  const value = Number.parseInt(hex.slice(1), 16);
-  const red = (value >> 16) & 0xff;
-  const green = (value >> 8) & 0xff;
-  const blue = value & 0xff;
-  return blue > red && blue >= green;
-}
-
 describe("curveSeries", () => {
-  it("draws Z-Scores in gold and the Isolation Forest in wine with distinct dashes", () => {
+  it("draws both baselines in warm gold tones with distinct dashes", () => {
     const series = curveSeries(RUNS);
     expect(series.map((entry) => [entry.name, entry.color, entry.dash])).toEqual([
-      ["Z-Scores", "#b8912f", ""],
-      ["Isolation Forest", "#7a1f2b", "8 3"],
+      ["Z-Scores", "#a8832a", ""],
+      ["Isolation Forest", "#7d5f17", "8 3"],
     ]);
     expect(series[0]?.points).toBe(RUNS[0]?.prCurve);
   });
 
   it("draws all five methods with the styles of the contract", () => {
     expect(curveSeries(ALL_RUNS).map((entry) => [entry.name, entry.color, entry.dash])).toEqual([
-      ["Z-Scores", "#b8912f", ""],
-      ["Isolation Forest", "#7a1f2b", "8 3"],
-      ["GCN", "#2f6b3a", "2 3"],
-      ["GraphSAGE", "#111111", "8 3 2 3"],
-      ["MLP (ohne Kanten)", "#6b6b66", "12 4"],
+      ["Z-Scores", "#a8832a", ""],
+      ["Isolation Forest", "#7d5f17", "8 3"],
+      ["GCN", "#3e6a9e", "2 3"],
+      ["GraphSAGE", "#1d3a5f", "8 3 2 3"],
+      ["MLP (ohne Kanten)", "#5b6474", "12 4"],
     ]);
+  });
+
+  it("draws the dotted GCN line thicker and leaves the other widths to the chart", () => {
+    expect(curveSeries(ALL_RUNS).map((entry) => entry.width)).toEqual([undefined, undefined, 2.5, undefined, undefined]);
+  });
+
+  it("keeps the label colours moss and wine out of the method colours", () => {
+    const colours = Object.values(METHOD_CURVE_STYLES).map((style) => style.color);
+    expect(colours).not.toContain(CHART_COLORS.moss);
+    expect(colours).not.toContain(CHART_COLORS.wine);
   });
 
   it("gives every method its own dash pattern", () => {
@@ -55,26 +57,21 @@ describe("curveSeries", () => {
     expect(new Set([...dashes, PREVALENCE_LEVEL_STYLE.dash]).size).toBe(dashes.length + 1);
   });
 
-  it("uses only palette colours and no blue", () => {
-    const palette = new Set<string>(Object.values(CHART_COLORS));
-    for (const style of [...Object.values(METHOD_CURVE_STYLES), PREVALENCE_LEVEL_STYLE]) {
-      expect(palette.has(style.color)).toBe(true);
-      expect(isBluish(style.color)).toBe(false);
-    }
-  });
-
-  it("recognises a pure blue channel in the test helper", () => {
-    expect(isBluish(`#${(0xff).toString(16).padStart(6, "0")}`)).toBe(true);
-    expect(isBluish(CHART_COLORS.moss)).toBe(false);
+  it("uses only colours of the palette, one per method, and keeps the prevalence apart", () => {
+    const series = new Set<string>(Object.values(CHART_COLORS));
+    const colours = Object.values(METHOD_CURVE_STYLES).map((style) => style.color);
+    for (const colour of [...colours, PREVALENCE_LEVEL_STYLE.color]) expect(series.has(colour)).toBe(true);
+    expect(new Set(colours).size).toBe(METHODS.length);
+    expect(colours).not.toContain(PREVALENCE_LEVEL_STYLE.color);
   });
 });
 
 describe("prevalenceLevel", () => {
-  it("draws the prevalence as a dashed stone line", () => {
+  it("draws the prevalence as a dashed line in line-strong", () => {
     expect(prevalenceLevel(EVALUATION)).toEqual({
       name: "Prävalenz (0,1115)",
       value: 0.1115,
-      color: "#6b6b66",
+      color: "#858d9b",
       dash: "4 4",
     });
   });

@@ -35,8 +35,11 @@ apps/web/                             Next.js-App (Paket web)
   app/                                Startseite, layout, error, not-found, robots, sitemap, opengraph-image, apple-icon,
                                       icon.svg, impressum, datenschutz, nutzungsbedingungen
   app/projects/netzradar/page.tsx     Projektseite (Server-Komponente, Texte aus metrics.json, Sprungnavigation)
+  app/fonts.ts                        Cormorant Garamond und Inter über next/font/google (beim Build selbst gehostet)
   components/LegalPage.tsx            Rahmen der Rechtsseiten
-  components/NavLinks.tsx             Hauptnavigation (Client, usePathname, aria-current auf dem aktiven Link)
+  components/site/                    gemeinsame Bausteine mit K1 und K2: SiteHeader, Brand, NavLinks (Client, usePathname,
+                                      aria-current), SiteFooter, HomeHero, ProjectHero, ProjectCards, SectionHeader, StatusPage,
+                                      LegalNav, PillTabs, Shell, buttons.ts, motif.tsx (BrandMark, HeroOrnament), netMotif.ts
   components/ExternalLink.tsx         externer Link mit rel="noopener noreferrer" und sr-only „(externe Seite)“
   components/BrandMark.tsx            Bildmarke wie icon.svg für Vorschaubild und Apple-Icon
   components/netzradar/               NetzRadarExplorer (Client, Auswahlzustand), GraphView (Sigma.js, dynamisch geladen,
@@ -44,11 +47,13 @@ apps/web/                             Next.js-App (Paket web)
                                       Fokusführung und scoreGnn), NodeSymbol, TopNodesTable (Startknoten, Spalte scoreGnn mit
                                       Verfahren), MetricsTable (alle Runs, Zufallsreferenz), SearchTable (Kandidaten der
                                       GNN-Suche am Validierungsteil), ScrollRegion (waagrecht scrollbarer Bereich mit
-                                      role="region", tabIndex 0 und Namen)
+                                      role="region", tabIndex 0 und Namen), MethodIndex (Inhaltsverzeichnis der Methodik,
+                                      öffnet den Ziel-details)
+  lib/og-glyphs.ts                    Glyphenpfade für Titel und Untertitel des Vorschaubilds
   lib/site.ts                         Projekte K1 bis K3 (kicker, repo), Navigation, Rechtslinks, Sitemap-Pfade,
                                       Repository-Links, DEFAULT_SITE_URL, siteUrl()
   lib/metadata.ts                     pageMetadata (Titel, Canonical, Open Graph mit Bild), Texte der Link-Vorschau,
-                                      OG_IMAGE_VERSION (Abfrage ?v= am Vorschaubild, weil es ein Jahr immutable
+                                      OG_IMAGE_VERSION (derzeit 3; Abfrage ?v= am Vorschaubild, weil es ein Jahr immutable
                                       ausgeliefert wird; bei jeder Änderung am Bild zusammen mit dem Fingerabdruck in
                                       lib/__tests__/metadata.test.ts anheben)
   lib/netzradar/types.ts              Datenvertrag als TypeScript-Typen, SCHEMA_VERSION, METHODS, LEARNED_METHODS,
@@ -64,7 +69,7 @@ apps/web/                             Next.js-App (Paket web)
   lib/netzradar/summary.ts            Tabellenzeilen, Zufallsreferenz, Mindestabstand für Vergleiche, erwartetes
                                       scoreGnnMethod, Accuracy-Obergrenze, Klassenabstand nach dem Mitteln,
                                       Hyperparameterliste, Zeitraum der Läufe, Kennzahlen für die Texte
-  lib/netzradar/curves.ts             METHOD_CURVE_STYLES (Farbe und Strichmuster je Verfahren), Prävalenzlinie
+  lib/netzradar/curves.ts             METHOD_CURVE_STYLES (Farbe, Strichmuster und Strichstärke je Verfahren), Prävalenzlinie
   lib/netzradar/messagePassing.ts     Rechenbeispiel Kette A – B – C – D (Mittelwert, GCN, GraphSAGE, MLP)
   lib/__tests__/, lib/netzradar/__tests__/
                                       Vitest; fixtures.ts baut Runs und Trainingsangaben für die Tests
@@ -72,7 +77,8 @@ apps/web/                             Next.js-App (Paket web)
   vitest.config.mts                   als .mts, damit Vite die Konfiguration als ESM lädt
 packages/ui/                          Card, Button, StatTile, cx
 packages/legal/                       OPERATOR (lastUpdated = Stand der Rechtstexte), Disclaimer, Datenschutz-Kurztext
-packages/charts/                      theme.ts (Palette, Fallback-Farben und -Strichmuster), PrCurveChart (Recharts, eigene Legende);
+packages/charts/                      theme.ts (Palette, Fallback-Farben und -Strichmuster), PrCurveChart (Recharts, eigene Legende
+                                      und eigener Tooltip in Verfahrensreihenfolge);
                                       Export `@portfolio/charts/theme` liefert die Palette ohne Recharts
 services/k3-train/                    Python-Paket k3_train, uv-Projekt, nicht im pnpm-Workspace
   Makefile                            all, data, baseline, gnn, export, verify, test, lint; GNN_RUN = uv run --extra gnn
@@ -139,7 +145,7 @@ Verbindlich für den Python-Export und die Seite. TypeScript-Typen in `apps/web/
 Zusätzlich verbindlich:
 
 - Jede Kennzahl bekommt einen Unit-Test mit von Hand gerechnetem Erwartungswert (`tests/test_metrics.py`, `tests/test_baseline.py`, `tests/test_graph.py`, auf der Webseite in `lib/netzradar/__tests__/`).
-- Kein Blau, siehe Design.
+- Farben nur aus den Tokens, siehe Design; moss und wine nur für Labels und Signale.
 - Seitentexte ohne interne Schrittnummern und ohne Verweise auf nicht öffentliche Unterlagen; Labels heißen auf der Seite auffällig, unauffällig und unbekannt, nicht illicit oder licit.
 
 ## Arbeitsweise
@@ -219,33 +225,45 @@ Hinweise:
 - Keine externen Schriften, Skripte, Fetches, Cookies oder Tracker. Eine neue fremde Quelle verstieße gegen Regel 6 und gegen die Datenschutzerklärung (`apps/web/app/datenschutz/page.tsx`). Änderungen an dem, was die Seite lädt oder überträgt, ziehen Änderungen an der Datenschutzerklärung und am README-Abschnitt „Datenschutz“ nach sich. Nach dem Laden holt der Browser nur Programmteile und Seitendaten verlinkter Seiten (Prefetch von `next/link`) vom selben Server.
 - Externe Links (Schwesterprojekte, GitHub) mit `rel="noopener noreferrer"`, ohne `target`, mit sichtbarem oder sr-only „(externe Seite)“. Sie laden vorab nichts.
 - E2E-Wächter: Während der Nutzung entsteht keine Anfrage an einen fremden Origin und keine Nicht-GET-Anfrage; außerdem keine Konsolenfehler, keine `pageerror` und keine CSP-Verstöße (`securitypolicyviolation`).
-- Skip-Link auf `#main`, globaler Fokusring in `gold-deep`, `prefers-reduced-motion` wird respektiert, `lang="de"`. Aktiver Navigationslink mit `aria-current="page"`.
-- Gold für Text nur als `text-gold-deep` (#7d5f17, AA-Kontrast); `gold` (#b8912f) nur für Flächen, Rahmen und Ringe.
-- Labels nie nur über Farbe kodieren, siehe Design. Linien in Diagrammen zusätzlich über Strichmuster unterscheiden: Farbe und Strichmuster je Verfahren in `METHOD_CURVE_STYLES` (`apps/web/lib/netzradar/curves.ts`: Z-Scores gold durchgezogen, Isolation Forest wine „8 3“, GCN moss „2 3“, GraphSAGE ink „8 3 2 3“, MLP stone „12 4“, Prävalenz stone „4 4“ dünner); `SERIES_COLORS` und `SERIES_DASHES` in `packages/charts/src/theme.ts` sind nur Rückfallwerte. Ein Test prüft, dass alle Kurvenfarben aus der Palette stammen und keine bläulich ist.
-- PR-Diagramm: eigene Legende in `PrCurveChart` mit Text in ink und `aria-hidden`-Symbolen, Tooltip-Text in ink mit Trenner „: “, `accessibilityLayer={false}` (kein namenloser Tab-Stopp `role="application"`; die Werte stehen in der Metriktafel). Recharts färbt Legenden- und Tooltip-Text sonst in der Serienfarbe, bei Gold also mit zu wenig Kontrast.
+- Skip-Link auf `#main`, globaler Fokusring 2 px in `gold-deep` auf Hell und `gold-light` auf Navy, `prefers-reduced-motion` wird respektiert, `lang="de"`. Aktiver Navigationslink mit `aria-current="page"`.
+- Goldtext auf Hell nur als `text-gold-deep` (#7d5f17), auf Navy als `text-gold-light` (#d8bd72); `gold` (#c9a548) nur für Linien, Flächen, Rahmen und Ringe.
+- Labels nie nur über Farbe kodieren, siehe Design. Linien in Diagrammen zusätzlich über Strichmuster unterscheiden: Farbe, Strichmuster und Strichstärke je Verfahren in `METHOD_CURVE_STYLES` (`apps/web/lib/netzradar/curves.ts`, Werte im Abschnitt Design); `SERIES_COLORS` und `SERIES_DASHES` in `packages/charts/src/theme.ts` sind nur Rückfallwerte. Tests prüfen, dass alle Kurvenfarben aus `CHART_COLORS` stammen, jedes Verfahren eine eigene Farbe und ein eigenes Strichmuster hat und keine Kurve moss oder wine trägt.
+- PR-Diagramm: eigene Legende in `PrCurveChart` mit Text in ink und `aria-hidden`-Symbolen, eigener Tooltip-Inhalt in der Reihenfolge der Legende mit Linienmuster je Eintrag und Text in ink mit Trenner „: “, `accessibilityLayer={false}` (kein namenloser Tab-Stopp `role="application"`; die Werte stehen in der Metriktafel). Recharts färbt Legenden- und Tooltip-Text sonst in der Serienfarbe, bei Gold also mit zu wenig Kontrast.
 - Detailfeld: Nach Auswahl eines Nachbarn oder „Auswahl aufheben“ geht der Fokus auf die Überschrift `#node-detail-title` (`tabIndex={-1}`), damit er nicht auf `<body>` fällt.
 - Waagrecht scrollbare Bereiche (Tabellen der Labels, Metriken, Suche und der Kette A – D sowie alle Formeln) liegen in `ScrollRegion` mit `role="region"`, `tabIndex={0}` und eindeutigem Namen (Tabellenüberschrift oder „Formel: …“), damit sie per Tastatur scrollbar sind; die Startknoten-Tabelle hat dasselbe Muster. Die E2E lässt axe-core (WCAG 2.x A und AA, Best Practices) bei 390, 768 und 1280 px laufen und erwartet 0 Verstöße. Ohne `tabIndex` melden die Läufe bei 390 und 768 px `scrollable-region-focusable` (geprüft am 07.10.2026). Kleine Textlinks in Navigation und Fußzeile brauchen mindestens 8 px Zeilenabstand (`gap-y-2` bzw. `gap-y-3`), sonst meldet axe `target-size`.
-- Reflow: bei 320 px kein waagrechter Überlauf (E2E auf fünf Seiten); Überschriften der Rechtsseiten mit `hyphens-auto break-words` und `text-2xl sm:text-3xl`.
+- Reflow: bei 320 px kein waagrechter Überlauf (E2E auf fünf Seiten); Überschriften der Rechtsseiten mit `hyphens-auto break-words` und `text-[clamp(2rem,9vw,4rem)]`, Lesespalte der Rechtsseiten `max-w-[36rem]`.
 - Graph: Hinweis für Maus und Touch über dem Graphen, Zoom-Schaltflächen auf schmalen Viewports unter dem Graphen, `<noscript>`-Hinweis an seiner Stelle.
 - Rechtsseiten über `@portfolio/legal` und `components/LegalPage.tsx`; Disclaimer auf der Projektseite.
 
 ## Design
 
-- Kein Blau, nirgends: keine Tailwind-Farbklassen aus dem Blau-, Himmelblau-, Violettblau- oder Türkisbereich und keine bläulichen Hex-Werte, auch nicht in Diagrammen, SVGs, der Graph-Ansicht, dem Vorschaubild oder dem Apple-Icon.
-- Palette (Tokens in `apps/web/app/globals.css`, Diagrammfarben in `packages/charts/src/theme.ts`): ink #111111, paper #fbfaf6, surface #ffffff, gold #b8912f, gold-deep #7d5f17 (Gold für Text), gold-soft #f3e9c9, moss #2f6b3a, moss-soft #dfeadf, wine #7a1f2b, wine-soft #f1dcdf, stone #6b6b66, line #e3e0d6. Dieselben Werte wie K2. K1 nutzt dieselben Hex-Werte, aber andere Token-Namen (green/bordeaux/muted).
-- Label-Kodierung in Graph, Legende und Tabellen, ohne Blau und auch bei Rot-Grün-Schwäche unterscheidbar (Werte in `NODE_STYLES`, `apps/web/lib/netzradar/graph.ts`):
-  - auffällig (`illicit`): gefüllt in wine mit Goldring
-  - unauffällig (`licit`): gefüllt in moss
-  - unbekannt (`unknown`): hohl (Füllung paper), nur Kontur in stone
-- Zahlen mit deutschem Dezimalkomma, typografischem Minus (U+2212) und `tabular-nums`. Verfahrensnamen im Text kurz (Z-Scores, Isolation Forest, GCN, GraphSAGE, MLP (ohne Kanten)), die langen `displayName` aus dem Export nur in der Metriktafel. Lieber mehr Weißraum als gedrängt.
+Designsystem „Navy & Gold“ (Branch `design/navy-gold`, Stand 07.10.2026), gemeinsam mit K1 und K2: Kopf, Fuß, Startseite, Rechtsseiten, 404 und die Bausteine in `apps/web/components/site/` sind in allen drei Repos gleich, nur die Projektdaten unterscheiden sich. Leitidee: dunkler Rahmen in Navy mit Goldakzenten (Kopf, Hero, Fuß), helle Arbeitsflächen in Elfenbein (Tabellen, Diagramme, Graph). Blau ist erlaubt.
+
+- Tokens (`@theme` in `apps/web/app/globals.css`):
+  - Navy: navy-950 #0b1626 (Kopf, Hero, Fuß), navy-900 #101f35 (Karten auf Navy), navy-800 #16273f (Hover, aktive Pille), navy-700 #26354d (Haarlinien auf Navy), navy-300 #8f9bb0 (gedämpfter Text auf Navy).
+  - Hell: ivory #f7f3ea (Seitenhintergrund), surface #fffdf8 (Karten), line #e4ddcc (Haarlinien), line-strong #858d9b (Ränder von Bedienelementen), ink #0f1b2d (Text), slate #5b6474 (gedämpfter Text).
+  - Gold: gold #c9a548 (Linien, Ränder, Marke, Buttons auf Navy), gold-light #d8bd72 (Goldtext auf Navy), gold-deep #7d5f17 (Goldtext und Fokus auf Hell), gold-soft #f3e9c9 (zarte Flächen).
+  - Signale: moss #2f6b3a, moss-light #93c9a0, moss-soft #dfeadf (unauffällig) sowie wine #7a1f2b, wine-light #e39aa4, wine-soft #f1dcdf (auffällig). moss und wine nur für Labels und Signale, nie für Verfahren.
+  - sky #3e6a9e: einzige mittlere Blau-Datenfarbe, sparsam.
+  - Aliase für ältere Klassen: paper = ivory, stone = slate.
+- Schriften: Cormorant Garamond 500 (Display, Kursiv für Akzentwörter in gold-light) und Inter 400/500 über `next/font/google` in `app/fonts.ts`, beim Build selbst gehostet, zur Laufzeit keine fremde Anfrage. Klassen `display` (Display-Schrift mit lining-nums), `num` (tabellarische Ziffern) und `eyebrow` (Inter 11 px, Sperrung 0,16 em, Versalien, gold-deep, auf Navy gold-light). Fließtext 15–16 px mit Zeilenhöhe 1,75 und höchstens etwa 70 Zeichen je Zeile (`max-w-[40rem]`), Leads höchstens drei Zeilen.
+- Diagrammfarben (`CHART_COLORS` in `packages/charts/src/theme.ts`): navy #1d3a5f, gold #b8912f, goldLine #a8832a, goldDeep #7d5f17, moss #2f6b3a, wine #7a1f2b, sky #3e6a9e, slate #5b6474, sand #c9b98f, ink #0f1b2d, line #e4ddcc, lineStrong #858d9b, grid #ece6d8, surface #ffffff. Kurven nach Verfahrensfamilie in `METHOD_CURVE_STYLES` (`apps/web/lib/netzradar/curves.ts`): Baselines warm (Z-Scores goldLine durchgezogen, Isolation Forest goldDeep „8 3“), Graph Neural Networks blau (GCN sky „2 3“ mit Strichstärke 2,5, GraphSAGE navy „8 3 2 3“), Kontrolle grau (MLP slate „12 4“), Prävalenz lineStrong „4 4“ dünner. Dieselben Farben tragen die Messbalken der Kacheln und der Metriktafel. `SERIES_COLORS` und `SERIES_DASHES` sind nur Rückfallwerte.
+- Bausteine in `apps/web/components/site/`: SiteHeader (navy-950, ab 640 px klebend, darunter statisch, ab 768 px einzeilig), Brand mit Netzmarke (`BrandMark` in `motif.tsx`), NavLinks (aktiver Link mit Goldlinie und `aria-current`, externe Links immer mit ↗), HomeHero, ProjectHero (Kennfakten als `dl`, Begriff als `dt`, Zahl als `dd`; unter 640 px dreispaltige Leiste ohne Ornament), ProjectCards, SectionHeader (Eyebrow, Display-h2, kurzer Lead), StatusPage (404 und Fehler), SiteFooter (drei Spalten mit gemeinsamem 20-px-Zeilenrhythmus), LegalNav, PillTabs (unter 360 px als 2×2-Raster), Buttons in `buttons.ts` (Pillen: Gold und Kontur gold/70 auf Navy, Navy und Kontur line-strong auf Hell). In `packages/ui`: Card, Button, StatTile (Einheit klein hinter der Zahl, Leerwert „—“ klein in line-strong).
+- Karten auf Hell: surface, Radius 16 px, Rand line, `shadow-card`. Tabellen `.data-table`: Kopf in Versalien slate 11 px, Zahlenspalten rechtsbündig mit tabellarischen Ziffern, Textspalten ohne (sonst wirkt der Bindestrich gesperrt). Auswahlfelder `select.field` mit eigenem Chevron.
+- Projektseite: Abschnittsleiste mit allen sieben Abschnitten, ab 1024 px unter dem Kopf klebend (`lg:top-[4.25rem]`, Anker mit `lg:scroll-mt-36`), mobil einzeilig waagrecht scrollbar. Detailfeld ab 1024 px klebend mit eigener Scrollfläche (`max-h-[calc(100dvh-10rem)]`, unten ausgeblendet). Die Unterabschnitte der Methodik außer Split, Suche und PR-AUC sind `details` mit h3 im `summary`; das Inhaltsverzeichnis (`components/netzradar/MethodIndex.tsx`) öffnet den Zielabschnitt. Die Tabelle der Startknoten ist ein einziger Tab-Stopp mit Pfeiltasten. Graph-Zeichenfläche hell (surface mit Punktraster), Lade-, Fehler- und noscript-Zustand mit Goldraute auf dem Raster.
+- Label-Kodierung in Graph, Legende und Tabellen (Werte in `NODE_STYLES`, `apps/web/lib/netzradar/graph.ts`), formunterscheidbar auch bei Rot-Grün-Schwäche: auffällig gefüllt in wine mit Goldring, unauffällig gefüllt in moss, unbekannt hohl (surface) mit Kontur in slate. Kanten slate mit Alpha, aktive Kanten navy.
+- Vorschaubild, Apple-Icon und Favicon: Navy mit Goldraute und Netzmarke (drei Ringknoten sternförmig um einen gefüllten Mittelknoten), Projektname in Display aus Glyphenpfaden (`lib/og-glyphs.ts`). Das Netz-Motiv im Vorschaubild bleibt rechts vom Titel.
+- Fokus: 2 px solid mit 2 px Abstand, gold-deep auf Hell, gold-light auf Navy (`.surface-navy`); Links und `summary` mit 0,375 rem Radius, Navigationslinks und Pillen rund. Skip-Link in Gold auf `#main`.
+- Kontraste (nachgerechnet, WCAG 4,5:1 für Text, 3:1 für Grafik und Ränder): navy-300 auf navy-950 6,47:1, gold-light auf navy-950 9,89:1, slate auf ivory 5,39:1 und auf surface 5,87:1, gold-deep auf surface 5,87:1 und auf gold-soft 4,92:1, wine auf surface 10,0:1; Grafik und Ränder: goldLine 3,47:1, sky 5,49:1 und line-strong 3,29:1 auf surface, line-strong 3,02:1 auf ivory, gold/70 auf navy-950 4,36:1.
+- Zahlen mit deutschem Dezimalkomma, typografischem Minus (U+2212) und tabellarischen Ziffern. Verfahrensnamen im Text kurz (Z-Scores, Isolation Forest, GCN, GraphSAGE, MLP (ohne Kanten)), die langen `displayName` aus dem Export nur in der Metriktafel. Lieber mehr Weißraum als gedrängt. `prefers-reduced-motion` schaltet Übergänge und die Linienanimation (`draw-line`) ab.
 
 ## Test-Stand
 
 Stand 07.10.2026, Einzelheiten in `docs/tests.md`:
 
 - pytest: 171 Tests mit dem Extra `gnn`; ohne Extra werden die 28 Tests in `test_gnn.py` und `test_gnn_pipeline.py` mit Grund übersprungen.
-- Vitest: 189 Tests in 9 Dateien, rund 2 s.
-- Playwright: 21 Tests, davon 3 axe-Läufe; mit `CI=true` gegen `next start` rund 25 s.
+- Vitest: 194 Tests in 9 Dateien, rund 3 s.
+- Playwright: 24 Tests, davon 3 axe-Läufe; mit `CI=true` gegen `next start` rund 30 s.
 - CI: Lauf 37554990175 vom 07.10.2026 grün, Job `train` rund 7 min.
 
 ## Definition of Done
@@ -281,7 +299,7 @@ Abnahme der GNN (Schritt 4, erfüllt): Vergleich GNN gegen Baseline gemessen und
 2. **Live-Demo auf Hugging Face Spaces** (Free CPU, pausiert bei Inaktivität): ja oder nein. Die Seite selbst bleibt statisch (Regel 6); ein Space wäre höchstens ein externer Link.
 3. **Starkes überwachtes Verfahren ohne Kanten** (Random Forest oder HistGradientBoosting auf lokalen Merkmalen plus Graphmaßen, gleicher Split, gleiche Auswahl am Validierungsteil, Seed 42). Neues Verfahren, also Vertragsänderung. Bis dahin nennt „Grenzen“ die Lücke, und der Satz zur Nachbarschaft gilt nur gegenüber dem MLP.
 4. **Seed-Streuung auf der Seite** (`seedSpread` in `metrics.json`, Vertrag v4, Spalte „Spanne über 5 Seeds“) und **Startknoten nach GNN-Score** als Umschalter. Beides ändert den Export.
-5. **Kicker „Projekt K1/K2/K3“** auf Start- und Projektseite (`PROJECTS.kicker`) durch sprechende Bezeichnungen ersetzen; danach eine reine Datenänderung in allen drei Repos.
+5. **Kicker „Projekt K1/K2/K3“** auf Start- und Projektseite (`PROJECTS.kicker`) durch sprechende Bezeichnungen ersetzen; danach eine reine Datenänderung in allen drei Repos. Vorschlag aus der Designkritik vom 07.10.2026: „Projekt 01“, „02“, „03“ wie auf Karten und im Fuß, im Vorschaubild nur der Kleintext („PROJEKT 03 · GRAPH-ML“).
 6. **CLAUDE.md öffentlich lassen** (bereinigt, Standard) oder aus dem Repo nehmen und nur eine kurze Architekturbeschreibung veröffentlichen.
 7. **Impressum**: ladungsfähige Anschrift für K1 bis K3.
 8. **Begriffe**: „auffällig“ steht auf der Seite für das Label illicit und zugleich für hohe Scores; eindeutige Begriffe für Label und Modellausgabe wählen.

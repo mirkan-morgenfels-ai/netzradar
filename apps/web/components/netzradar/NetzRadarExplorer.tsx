@@ -33,8 +33,8 @@ export function NetzRadarExplorer({ nodes, edges, scoreGnnMethod, description }:
     : [];
 
   return (
-    <div className="grid gap-6 lg:grid-cols-3" data-testid="netzradar-explorer">
-      <div className="min-w-0 space-y-3 lg:col-span-2">
+    <div className="grid gap-6 lg:grid-cols-3 lg:gap-8" data-testid="netzradar-explorer">
+      <div className="min-w-0 space-y-4 lg:col-span-2">
         <GraphView
           nodes={nodes}
           edges={edges}
@@ -46,7 +46,7 @@ export function NetzRadarExplorer({ nodes, edges, scoreGnnMethod, description }:
         <GraphLegend />
       </div>
       <div className="min-w-0 lg:col-start-3 lg:row-span-2 lg:row-start-1">
-        <div className="lg:sticky lg:top-6">
+        <div className="lg:sticky lg:top-36 lg:-mx-3 lg:max-h-[calc(100dvh-10rem)] lg:overflow-y-auto lg:overscroll-contain lg:px-3 lg:pb-8 lg:[mask-image:linear-gradient(to_bottom,#000_calc(100%-2rem),transparent)]">
           <NodeDetail
             node={selected}
             neighbors={neighbors}

@@ -1,20 +1,31 @@
-import { CHART_COLORS } from "@portfolio/charts/theme";
+const GOLD = "#c9a548";
+const GOLD_LIGHT = "#d8bd72";
+const NAVY = "#0b1626";
 
-export function BrandMark({ size, rounded = true }: { size: number; rounded?: boolean }) {
+const CENTER: readonly [number, number] = [31, 33];
+
+const NODES: ReadonlyArray<readonly [number, number]> = [
+  [19.3, 28.7],
+  [40.6, 25],
+  [33.4, 46.8],
+];
+
+export function BrandMark({ size, diamond = 2.6 }: { size: number; diamond?: number }) {
+  const [cx, cy] = CENTER;
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-      <rect width="64" height="64" rx={rounded ? 14 : 0} fill={CHART_COLORS.ink} />
+      <path d="M32 4.5 59.5 32 32 59.5 4.5 32Z" fill="none" stroke={GOLD} strokeWidth={diamond} />
       <path
-        d="M18 44L32 20L46 44Z M32 20V36 M18 44L32 36L46 44"
+        d={NODES.map(([x, y]) => `M${cx} ${cy} ${x} ${y}`).join("")}
         fill="none"
-        stroke={CHART_COLORS.gold}
-        strokeWidth="2.5"
-        strokeLinejoin="round"
+        stroke={GOLD_LIGHT}
+        strokeWidth="2.6"
+        strokeLinecap="round"
       />
-      <circle cx="32" cy="20" r="4.5" fill={CHART_COLORS.gold} />
-      <circle cx="18" cy="44" r="4.5" fill={CHART_COLORS.gold} />
-      <circle cx="46" cy="44" r="4.5" fill={CHART_COLORS.gold} />
-      <circle cx="32" cy="36" r="5" fill={CHART_COLORS.wine} stroke={CHART_COLORS.paper} strokeWidth="1.5" />
+      {NODES.map(([x, y]) => (
+        <circle key={`${x}-${y}`} cx={x} cy={y} r="4.2" fill={NAVY} stroke={GOLD_LIGHT} strokeWidth="2.6" />
+      ))}
+      <circle cx={cx} cy={cy} r="5.4" fill={GOLD_LIGHT} />
     </svg>
   );
 }

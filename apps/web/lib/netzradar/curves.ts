@@ -5,6 +5,7 @@ import type { EvaluationInfo, Method, PrCurvePoint, Run } from "./types";
 export interface CurveStyle {
   color: string;
   dash: string;
+  width?: number;
 }
 
 export interface CurveSeries extends CurveStyle {
@@ -20,14 +21,14 @@ export interface ReferenceLevel {
 }
 
 export const METHOD_CURVE_STYLES: Record<Method, CurveStyle> = {
-  zscore: { color: CHART_COLORS.gold, dash: "" },
-  iforest: { color: CHART_COLORS.wine, dash: "8 3" },
-  gcn: { color: CHART_COLORS.moss, dash: "2 3" },
-  graphsage: { color: CHART_COLORS.ink, dash: "8 3 2 3" },
-  mlp: { color: CHART_COLORS.stone, dash: "12 4" },
+  zscore: { color: CHART_COLORS.goldLine, dash: "" },
+  iforest: { color: CHART_COLORS.goldDeep, dash: "8 3" },
+  gcn: { color: CHART_COLORS.sky, dash: "2 3", width: 2.5 },
+  graphsage: { color: CHART_COLORS.navy, dash: "8 3 2 3" },
+  mlp: { color: CHART_COLORS.slate, dash: "12 4" },
 };
 
-export const PREVALENCE_LEVEL_STYLE: CurveStyle = { color: CHART_COLORS.stone, dash: "4 4" };
+export const PREVALENCE_LEVEL_STYLE: CurveStyle = { color: CHART_COLORS.lineStrong, dash: "4 4" };
 
 export function curveSeries(runs: readonly Run[]): CurveSeries[] {
   return runs.map((run) => ({

@@ -23,11 +23,11 @@ export default function ImpressumPage() {
         </p>
         <p>
           Kontakt:{" "}
-          <a href={`mailto:${OPERATOR.email}`} className="text-moss underline">
+          <a href={`mailto:${OPERATOR.email}`} className="link">
             {OPERATOR.email}
           </a>
         </p>
-        <p className="text-stone">
+        <p className="text-slate">
           Diese Seite ist ein privates, nicht-kommerzielles Portfolio- und Lernprojekt. Es werden keine Waren oder
           Dienstleistungen angeboten, es gibt keine Werbung und keine Bezahlfunktion. Kontaktaufnahme bitte per E-Mail.
         </p>
@@ -40,7 +40,7 @@ export default function ImpressumPage() {
           öffentlichen Forschungsdatensätzen. Die gezeigten Ergebnisse sind vorab berechnete Ausgaben statistischer Modelle.
           Sie sind keine Aussage über reale Konten oder Personen und stellen keine Anlage-, Rechts- oder Compliance-Beratung
           dar. Näheres regeln die{" "}
-          <Link href="/nutzungsbedingungen" className="text-moss underline">
+          <Link href="/nutzungsbedingungen" className="link">
             Nutzungsbedingungen
           </Link>
           .

@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_SITE_URL,
+  GITHUB_PROFILE_URL,
+  HOME_DESCRIPTION,
   LEGAL_LINKS,
   LICENSE_URL,
   NAV_LINKS,
@@ -21,6 +23,8 @@ describe("PROJECTS", () => {
     expect(PROJECTS.map((project) => project.slug)).toEqual(["depotdoktor", "kontoklar", "netzradar"]);
     expect(PROJECTS.map((project) => project.code)).toEqual(["K1", "K2", "K3"]);
     expect(PROJECTS.map((project) => project.kicker)).toEqual(["Projekt K1", "Projekt K2", "Projekt K3"]);
+    expect(PROJECTS.map((project) => project.number)).toEqual(["01", "02", "03"]);
+    expect(PROJECTS.map((project) => project.topic)).toEqual(["Finanzdaten", "Maschinelles Lernen", "Graph-ML"]);
   });
 
   it("links NetzRadar internally", () => {
@@ -61,18 +65,38 @@ describe("PROJECTS", () => {
       expect(project.description.trim().length).toBeGreaterThan(0);
     }
   });
+
+  it("uses the same project descriptions as the sibling sites", () => {
+    expect(PROJECTS[0]?.description).toBe(
+      "Depot-Steuer- und Performance-Analyzer für Broker-CSV-Exporte. Die Auswertung läuft vollständig im Browser.",
+    );
+    expect(PROJECTS[1]?.description).toBe("Kategorisiert Bankumsätze aus CSV-Exporten und zeigt, wohin das Geld geht.");
+    expect(PROJECTS[2]?.description).toBe(
+      "Anomalie-Erkennung in Transaktionsnetzwerken: klassische Baseline gegen Graph Neural Networks, mit zeitlichem Split und PR-AUC.",
+    );
+  });
+
+  it("describes the start page with the same words as the sibling sites", () => {
+    expect(HOME_DESCRIPTION).toBe(
+      "Drei Portfolio-Projekte zu Finanzdaten, maschinellem Lernen und Graph-ML: DepotDoktor, KontoKlar und NetzRadar, jeweils mit öffentlichem Quellcode auf GitHub.",
+    );
+    for (const project of PROJECTS) expect(HOME_DESCRIPTION).toContain(project.title);
+  });
 });
 
 describe("navigation", () => {
-  it("offers start and the three projects in the main navigation", () => {
-    expect(NAV_LINKS.map((link) => link.label)).toEqual(["Start", "DepotDoktor", "KontoKlar", "NetzRadar"]);
+  it("offers start, the three projects and the GitHub profile in the main navigation", () => {
+    expect(NAV_LINKS.map((link) => link.label)).toEqual(["Start", "DepotDoktor", "KontoKlar", "NetzRadar", "GitHub"]);
     expect(NAV_LINKS.map((link) => link.href)).toEqual([
       "/",
       "https://depotdoktor.vercel.app/projects/depotdoktor",
       "https://kontoklar-eight.vercel.app/projects/kontoklar",
       "/projects/netzradar",
+      "https://github.com/mirkan-morgenfels-ai",
     ]);
-    expect(NAV_LINKS.map((link) => link.external)).toEqual([false, true, true, false]);
+    expect(NAV_LINKS.map((link) => link.external)).toEqual([false, true, true, false, true]);
+    expect(NAV_LINKS.at(-1)?.href).toBe(GITHUB_PROFILE_URL);
+    expect(GITHUB_PROFILE_URL).toBe("https://github.com/mirkan-morgenfels-ai");
   });
 
   it("offers the three legal pages", () => {

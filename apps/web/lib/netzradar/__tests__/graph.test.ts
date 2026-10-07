@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  DIMMED_NODE_COLOR,
+  EDGE_ALPHA,
   EDGE_STYLES,
   NODE_STYLES,
   buildAdjacency,
@@ -12,25 +14,30 @@ import {
   nodeAttributes,
   nodeDisplay,
   nodeEmphasis,
+  premultiplied,
   seedNodes,
   summarizeComponents,
 } from "../graph";
 import type { NetEdge, NetNode } from "../types";
 
 const PALETTE = new Set([
-  "#111111",
-  "#fbfaf6",
-  "#ffffff",
+  "#1d3a5f",
   "#b8912f",
-  "#7d5f17",
-  "#f3e9c9",
   "#2f6b3a",
-  "#dfeadf",
   "#7a1f2b",
-  "#f1dcdf",
-  "#6b6b66",
-  "#e3e0d6",
+  "#3e6a9e",
+  "#5b6474",
+  "#c9b98f",
+  "#0f1b2d",
+  "#e4ddcc",
+  "#ece6d8",
+  "#ffffff",
 ]);
+
+function channels(hex: string): [number, number, number] {
+  const value = Number.parseInt(hex.slice(1), 16);
+  return [(value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff];
+}
 
 function node(id: string, overrides: Partial<NetNode> = {}): NetNode {
   return {
@@ -138,10 +145,10 @@ describe("node and edge attributes", () => {
     expect(attributes.zIndex).toBe(1);
   });
 
-  it("encodes unknown as hollow paper with a stone outline", () => {
+  it("encodes unknown as hollow surface with a slate outline", () => {
     const attributes = nodeAttributes(NODE_D);
-    expect(attributes.color).toBe("#fbfaf6");
-    expect(attributes.borderColor).toBe("#6b6b66");
+    expect(attributes.color).toBe("#ffffff");
+    expect(attributes.borderColor).toBe("#5b6474");
     expect(attributes.borderSize).toBe(0.3);
     expect(attributes.size).toBe(3.5);
   });
@@ -166,29 +173,45 @@ describe("node and edge attributes", () => {
 
   it("greys out dimmed nodes unless they are selected", () => {
     const dimmed = nodeDisplay(nodeAttributes(NODE_A), "dimmed", false);
-    expect(dimmed.color).toBe("#e3e0d6");
-    expect(dimmed.borderColor).toBe("#e3e0d6");
+    expect(dimmed.color).toBe("#dfe2e6");
+    expect(dimmed.borderColor).toBe("#dfe2e6");
     expect(dimmed.zIndex).toBe(0);
     const selected = nodeDisplay(nodeAttributes(NODE_A), "dimmed", true);
     expect(selected.color).toBe("#7a1f2b");
     expect(selected.highlighted).toBe(true);
   });
 
-  it("draws active edges in ink and thicker", () => {
-    expect(edgeDisplay("active")).toEqual({ color: "#111111", size: 2.5, zIndex: 2 });
-    expect(edgeDisplay("dimmed")).toEqual({ color: "#e3e0d6", size: 1, zIndex: 0 });
-    expect(edgeDisplay("normal")).toEqual({ color: "rgba(107, 107, 102, 0.6)", size: 1, zIndex: 1 });
-    expect(edgeAttributes()).toEqual({ color: "rgba(107, 107, 102, 0.6)", size: 1, zIndex: 0 });
+  it("draws active edges in navy and thicker, normal edges in slate with alpha", () => {
+    expect(edgeDisplay("active")).toEqual({ color: "#1d3a5f", size: 2.5, zIndex: 2 });
+    expect(edgeDisplay("dimmed")).toEqual({ color: "#e9ebee", size: 1, zIndex: 0 });
+    expect(edgeDisplay("normal")).toEqual({ color: "rgba(46, 50, 58, 0.5)", size: 1, zIndex: 1 });
+    expect(edgeAttributes()).toEqual({ color: "rgba(46, 50, 58, 0.5)", size: 1, zIndex: 0 });
+    expect(EDGE_ALPHA).toBe(0.5);
   });
 
-  it("uses only palette colours", () => {
+  it("premultiplies a colour by its alpha for the WebGL blending of the graph", () => {
+    expect(premultiplied("#5b6474", 0.5)).toBe("rgba(46, 50, 58, 0.5)");
+    expect(premultiplied("#ffffff", 1)).toBe("rgba(255, 255, 255, 1)");
+    expect(premultiplied("#0f1b2d", 0)).toBe("rgba(0, 0, 0, 0)");
+  });
+
+  it("uses only palette colours for labels and active edges", () => {
     const colours = [
       ...Object.values(NODE_STYLES).flatMap((style) => [style.fill, style.ring]),
       EDGE_STYLES.active.color,
-      EDGE_STYLES.dimmed.color,
     ];
     for (const colour of colours) expect(PALETTE.has(colour)).toBe(true);
-    expect(EDGE_STYLES.normal.color).toBe("rgba(107, 107, 102, 0.6)");
+    expect(EDGE_STYLES.normal.color).toBe(premultiplied("#5b6474", EDGE_ALPHA));
+  });
+
+  it("dims the context in a light, cool grey that stays behind every label colour", () => {
+    for (const colour of [DIMMED_NODE_COLOR, EDGE_STYLES.dimmed.color]) {
+      const [red, green, blue] = channels(colour);
+      expect(Math.min(red, green, blue)).toBeGreaterThanOrEqual(0xd8);
+      expect(blue).toBeGreaterThanOrEqual(red);
+      expect(PALETTE.has(colour)).toBe(false);
+    }
+    expect(new Set(Object.values(NODE_STYLES).map((style) => style.fill)).has(DIMMED_NODE_COLOR)).toBe(false);
   });
 });
 

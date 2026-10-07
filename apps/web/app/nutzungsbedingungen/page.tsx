@@ -69,7 +69,7 @@ export default function NutzungsbedingungenPage() {
           sind nicht Teil des Quellcodes. Ausgenommen sind die Exporte des eigenen synthetischen Netzes in data/k3/
           (MIT-Lizenz). Rohdaten werden weder im Repository noch auf dieser Seite veröffentlicht.
         </p>
-        <ul className="list-disc space-y-2 pl-6">
+        <ul>
           <li>
             Eigenes synthetisches Netz, erzeugt mit einem eigenen Generator (Python, NumPy) im Quellcode des Projekts:
             MIT-Lizenz. Derzeit stammen alle auf dieser Seite gezeigten Ergebnisse aus diesem Netz.

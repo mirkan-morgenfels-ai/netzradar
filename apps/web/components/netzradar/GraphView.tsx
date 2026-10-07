@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type Sigma from "sigma";
 import type { CameraState } from "sigma/types";
-import { Button } from "@portfolio/ui";
 import { CHART_COLORS } from "@portfolio/charts/theme";
 import {
   edgeAttributes,
@@ -17,6 +16,7 @@ import {
   type GraphEdgeAttributes,
   type GraphNodeAttributes,
 } from "@/lib/netzradar/graph";
+import { formatInteger } from "@/lib/netzradar/format";
 import type { NetEdge, NetNode } from "@/lib/netzradar/types";
 
 type Status = "loading" | "ready" | "unsupported" | "error";
@@ -27,6 +27,10 @@ const ZOOM_STEP = 1.6;
 const FOCUS_RATIO = 0.35;
 const LABEL_FONT = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif';
 const RESET_STATE: Partial<CameraState> = { x: 0.5, y: 0.5, ratio: 1, angle: 0 };
+const CONTROL_BASE =
+  "inline-flex h-9 items-center justify-center rounded-full text-ink transition-colors duration-150 hover:bg-navy-950 hover:text-ivory";
+const CONTROL_ICON = `${CONTROL_BASE} w-9 text-lg leading-none`;
+const CONTROL_TEXT = `${CONTROL_BASE} px-4 text-sm font-medium`;
 
 export interface GraphViewProps {
   nodes: readonly NetNode[];
@@ -119,9 +123,9 @@ export function GraphView({ nodes, edges, adjacency, selectedId, onSelect, descr
             minCameraRatio: 0.05,
             maxCameraRatio: 2,
             stagePadding: 24,
-            labelFont: LABEL_FONT,
+            labelFont: getComputedStyle(container).fontFamily || LABEL_FONT,
             labelSize: 12,
-            labelWeight: "600",
+            labelWeight: "500",
             labelColor: { color: CHART_COLORS.ink },
             labelRenderedSizeThreshold: Number.POSITIVE_INFINITY,
             nodeReducer: (id, data) => {
@@ -200,21 +204,30 @@ export function GraphView({ nodes, edges, adjacency, selectedId, onSelect, descr
           role="img"
           aria-label={description}
           data-testid="graph-canvas"
-          className="h-[360px] w-full overflow-hidden rounded-lg border border-line bg-surface sm:h-[520px]"
+          className="h-[380px] w-full overflow-hidden rounded-2xl border border-line bg-surface bg-[radial-gradient(circle,rgb(91_100_116/0.16)_1px,transparent_1.2px)] [background-size:22px_22px] shadow-card sm:h-[560px]"
         />
+        <p
+          aria-hidden="true"
+          className="pointer-events-none absolute top-4 left-4 hidden items-center gap-2 rounded-full border border-line bg-surface/90 px-3 py-1.5 text-[0.6875rem] font-medium tracking-[0.14em] text-slate uppercase sm:inline-flex"
+        >
+          <span className="size-1.5 rotate-45 bg-gold" />
+          {formatInteger(nodes.length)} Knoten · {formatInteger(edges.length)} Kanten
+        </p>
         {isClient && status === "loading" ? (
           <p
-            className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-stone"
+            className="pointer-events-none absolute inset-0 flex items-center justify-center gap-3 text-sm text-slate"
             data-testid="graph-loading"
           >
+            <span aria-hidden="true" className="size-2 rotate-45 bg-gold" />
             Graph wird geladen …
           </p>
         ) : null}
         <noscript>
           <p
-            className="absolute inset-0 flex items-center justify-center rounded-lg bg-paper p-6 text-center text-sm text-stone"
+            className="absolute inset-0 flex items-center justify-center gap-3 rounded-2xl p-6 text-center text-sm text-slate"
             data-testid="graph-noscript"
           >
+            <span aria-hidden="true" className="size-2 shrink-0 rotate-45 bg-gold" />
             Die Graph-Ansicht braucht JavaScript; Kennzahlen und Tabellen stehen unten.
           </p>
         </noscript>
@@ -222,8 +235,9 @@ export function GraphView({ nodes, edges, adjacency, selectedId, onSelect, descr
           <div
             role="status"
             data-testid="graph-fallback"
-            className="absolute inset-0 flex items-center justify-center rounded-lg bg-paper p-6 text-center text-sm text-stone"
+            className="absolute inset-0 flex items-center justify-center gap-3 rounded-2xl p-6 text-center text-sm text-slate"
           >
+            <span aria-hidden="true" className="size-2 shrink-0 rotate-45 bg-gold" />
             <p className="max-w-md">
               {status === "unsupported"
                 ? "Ihr Browser stellt kein WebGL bereit. Die Graph-Ansicht ist deshalb ausgeblendet. Die Tabelle der Startknoten und das Detailfeld funktionieren weiterhin."
@@ -233,21 +247,21 @@ export function GraphView({ nodes, edges, adjacency, selectedId, onSelect, descr
         ) : null}
       </div>
       {status === "ready" ? (
-        <div
-          className="mt-2 flex justify-end gap-2 sm:absolute sm:right-3 sm:top-3 sm:mt-0"
-          data-testid="graph-controls"
-        >
-          <Button type="button" variant="secondary" onClick={() => zoom(ZOOM_STEP)}>
-            <span aria-hidden="true">+</span>
-            <span className="sr-only">Vergrößern</span>
-          </Button>
-          <Button type="button" variant="secondary" onClick={() => zoom(1 / ZOOM_STEP)}>
-            <span aria-hidden="true">−</span>
-            <span className="sr-only">Verkleinern</span>
-          </Button>
-          <Button type="button" variant="secondary" onClick={reset}>
-            Gesamtansicht
-          </Button>
+        <div className="mt-3 flex justify-end sm:absolute sm:top-4 sm:right-4 sm:mt-0" data-testid="graph-controls">
+          <div className="inline-flex items-center gap-0.5 rounded-full border border-line bg-surface p-1 shadow-card">
+            <button type="button" onClick={() => zoom(ZOOM_STEP)} className={CONTROL_ICON}>
+              <span aria-hidden="true">+</span>
+              <span className="sr-only">Vergrößern</span>
+            </button>
+            <button type="button" onClick={() => zoom(1 / ZOOM_STEP)} className={CONTROL_ICON}>
+              <span aria-hidden="true">−</span>
+              <span className="sr-only">Verkleinern</span>
+            </button>
+            <span aria-hidden="true" className="mx-1 h-5 w-px bg-line" />
+            <button type="button" onClick={reset} className={CONTROL_TEXT}>
+              Gesamtansicht
+            </button>
+          </div>
         </div>
       ) : null}
     </div>

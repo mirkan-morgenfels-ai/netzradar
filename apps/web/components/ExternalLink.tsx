@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export const PROSE_LINK_CLASS = "text-moss underline underline-offset-2 hover:text-gold-deep";
+export const PROSE_LINK_CLASS = "link";
 
 export function ExternalLink({
   href,
