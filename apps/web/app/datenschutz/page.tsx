@@ -1,8 +1,14 @@
 import type { Metadata } from "next";
 import { OPERATOR, PRIVACY_SHORT } from "@portfolio/legal";
 import { LegalPage, LegalSection } from "@/components/LegalPage";
+import { pageMetadata } from "@/lib/metadata";
 
-export const metadata: Metadata = { title: "Datenschutzerklärung" };
+export const metadata: Metadata = pageMetadata({
+  title: "Datenschutzerklärung",
+  description:
+    "Datenschutzerklärung von NetzRadar: keine Eingaben, keine Cookies, kein Tracking; verarbeitet werden nur technisch notwendige Daten beim Hosting.",
+  path: "/datenschutz",
+});
 
 export default function DatenschutzPage() {
   return (
@@ -31,8 +37,8 @@ export default function DatenschutzPage() {
         <p>{PRIVACY_SHORT}</p>
         <p>
           Konkret: NetzRadar zeigt ausschließlich Ergebnisse, die vorab außerhalb dieser Seite berechnet wurden. Beim Aufruf
-          lädt Ihr Browser nur eigene statische Dateien dieser Seite (HTML, JavaScript, CSS, Grafiken und die vorberechneten
-          JSON-Dateien) von dem Server, über den die Seite ausgeliefert wird (Vercel, Abschnitt 4). Es werden keine Inhalte
+          lädt Ihr Browser nur eigene statische Dateien dieser Seite (HTML, JavaScript, CSS und Grafiken) von dem Server, über
+          den die Seite ausgeliefert wird (Vercel, Abschnitt 4). Es werden keine Inhalte
           Dritter nachgeladen, kein Modell ausgeführt und keine Programmierschnittstelle aufgerufen. Interaktionen innerhalb
           der Graph-Ansicht und der Diagramme, etwa das Auswählen oder Vergrößern eines Ausschnitts, werden nur in Ihrem
           Browser verarbeitet und weder übertragen noch gespeichert oder protokolliert. Sie können das in den
@@ -52,7 +58,7 @@ export default function DatenschutzPage() {
           Rechtsgrundlage ist Art. 6 Abs. 1 lit. f DSGVO; das berechtigte Interesse liegt im sicheren und stabilen Betrieb der
           Seite. Vercel verarbeitet diese Daten als Auftragsverarbeiter; die Übermittlung in die USA stützt sich auf die
           Standardvertragsklauseln der EU-Kommission und die Zertifizierung von Vercel unter dem EU-US Data Privacy Framework.
-          Einzelheiten stehen in der Datenschutzerklärung von Vercel unter https://vercel.com/legal/privacy-policy.
+          Einzelheiten stehen in der Datenschutzerklärung von Vercel unter https://vercel.com/legal/privacy-notice.
         </p>
         <p>
           Der Betreiber selbst wertet diese Logdaten nicht aus. Vercel Web Analytics und Speed Insights sind nicht aktiviert.
@@ -70,10 +76,10 @@ export default function DatenschutzPage() {
 
       <LegalSection title="6. Externe Links">
         <p>
-          Die Startseite verlinkt auf die Projekte DepotDoktor und KontoKlar, die unter eigenen Adressen betrieben werden und
-          eigene Datenschutzerklärungen haben. Beim Anklicken eines externen Links verlassen Sie diese Seite; für die
-          Datenverarbeitung dort gilt die Datenschutzerklärung des jeweiligen Angebots. Beim Aufruf dieser Seite werden keine
-          Inhalte Dritter (Schriften, Skripte, Videos, Karten) nachgeladen.
+          Diese Seite verlinkt auf die Projekte DepotDoktor und KontoKlar, die unter eigenen Adressen betrieben werden und
+          eigene Datenschutzerklärungen haben, sowie auf die öffentlichen Quellcode-Repositories bei GitHub (GitHub, Inc.,
+          USA). Erst beim Anklicken ruft Ihr Browser die fremde Seite auf; dort gilt die Datenschutzerklärung des jeweiligen
+          Anbieters. Vorher werden keine Daten an diese Anbieter übertragen, und die Links übermitteln keine Herkunftsseite.
         </p>
       </LegalSection>
 
