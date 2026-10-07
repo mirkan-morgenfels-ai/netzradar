@@ -1,60 +1,43 @@
 import { describe, expect, it } from "vitest";
 import {
+  averagedSeparation,
   beatsRandomRankings,
+  bestAccuracyAtFlagged,
+  bestBaseline,
   bestRun,
+  compareScores,
+  comparisonMargin,
   expectedRandomPrAuc,
+  expectedScoreGnnMethod,
   featureNames,
+  finalTrainRatioWeight,
   hitsAtRecall,
   illicitShareAmongLabelled,
+  isGraphMethod,
+  isLearnedMethod,
   labelTotal,
   labelledTestCount,
   meanDegree,
   metricRows,
   numberParameter,
   parameterEntries,
+  reachedEpochLimit,
+  searchWeight,
+  selectedCandidate,
   zeroMadFeatures,
 } from "../summary";
-import type { EvaluationInfo, Method, NetNode, Run } from "../types";
-
-const EVALUATION: EvaluationInfo = {
-  positiveLabel: "illicit",
-  excludedLabel: "unknown",
-  testPositives: 95,
-  testNegatives: 757,
-  prevalence: 0.1115,
-  allLicitAccuracy: 0.8885,
-  randomPrAucExpected: 0.1181,
-  randomPrAucQ95: 0.142,
-  randomPermutations: 10000,
-};
-
-function run(method: Method, prAuc: number): Run {
-  return {
-    method,
-    displayName: method,
-    featureSet: "local",
-    seed: 42,
-    date: "2026-10-06",
-    hyperparameters: {},
-    prAuc,
-    precisionAtRecall50: 0,
-    recallAtPrecision50: 0,
-    accuracy: 0,
-    accuracyThreshold: "oberste 2 %",
-    accuracyFlagged: 1,
-    accuracyTruePositives: 0,
-    prCurve: [{ recall: 0, precision: 1 }],
-  };
-}
+import { METHODS, type NetNode } from "../types";
+import { EVALUATION, candidate, learnedRun, run, training } from "./fixtures";
 
 describe("metricRows", () => {
-  it("lists measured baselines first and marks missing GNN runs as pending", () => {
+  it("lists measured baselines first and marks missing learned runs as pending", () => {
     const rows = metricRows([run("iforest", 0.1281), run("zscore", 0.1633)]);
     expect(rows.map((row) => [row.method, row.kind])).toEqual([
       ["zscore", "measured"],
       ["iforest", "measured"],
       ["gcn", "pending"],
       ["graphsage", "pending"],
+      ["mlp", "pending"],
     ]);
   });
 
@@ -64,7 +47,49 @@ describe("metricRows", () => {
       ["zscore", "measured"],
       ["gcn", "measured"],
       ["graphsage", "pending"],
+      ["mlp", "pending"],
     ]);
+  });
+
+  it("orders all five measured runs like the contract and leaves nothing pending", () => {
+    const rows = metricRows([
+      run("mlp", 0.3765),
+      run("graphsage", 0.8941),
+      run("zscore", 0.1633),
+      run("gcn", 0.7897),
+      run("iforest", 0.1281),
+    ]);
+    expect(rows.map((row) => [row.method, row.kind])).toEqual([
+      ["zscore", "measured"],
+      ["iforest", "measured"],
+      ["gcn", "measured"],
+      ["graphsage", "measured"],
+      ["mlp", "measured"],
+    ]);
+  });
+});
+
+describe("method groups", () => {
+  it("separates learned and graph methods", () => {
+    expect(METHODS.map(isLearnedMethod)).toEqual([false, false, true, true, true]);
+    expect(METHODS.map(isGraphMethod)).toEqual([false, false, true, true, false]);
+  });
+});
+
+describe("expectedScoreGnnMethod", () => {
+  it("takes the graph method with the higher validation PR-AUC and never the MLP", () => {
+    const runs = [learnedRun("gcn", 0.7897, 0.7364), learnedRun("graphsage", 0.8941, 0.9349), learnedRun("mlp", 0.9, 0.99)];
+    expect(expectedScoreGnnMethod(runs)).toBe("graphsage");
+  });
+
+  it("prefers GCN on a tie and ignores the test PR-AUC", () => {
+    expect(expectedScoreGnnMethod([learnedRun("graphsage", 0.9, 0.8), learnedRun("gcn", 0.1, 0.8)])).toBe("gcn");
+    expect(expectedScoreGnnMethod([learnedRun("gcn", 0.9, 0.7), learnedRun("graphsage", 0.1, 0.71)])).toBe("graphsage");
+  });
+
+  it("returns null without graph runs", () => {
+    expect(expectedScoreGnnMethod([run("zscore", 0.1633), learnedRun("mlp", 0.3765, 0.497)])).toBeNull();
+    expect(expectedScoreGnnMethod([learnedRun("graphsage", 0.8941, 0.9349)])).toBe("graphsage");
   });
 });
 
@@ -92,6 +117,76 @@ describe("comparisons with the random level", () => {
   it("picks the run with the highest PR-AUC", () => {
     expect(bestRun([run("iforest", 0.1281), run("zscore", 0.1633)])?.method).toBe("zscore");
     expect(bestRun([])).toBeNull();
+  });
+
+  it("picks the better baseline and ignores learned runs", () => {
+    const runs = [run("zscore", 0.1633), run("iforest", 0.1281), learnedRun("gcn", 0.7897, 0.7364)];
+    expect(bestBaseline(runs)?.method).toBe("zscore");
+    expect(bestBaseline([learnedRun("gcn", 0.7897, 0.7364)])).toBeNull();
+  });
+
+  it("uses the spread of random rankings as comparison margin", () => {
+    expect(comparisonMargin(EVALUATION)).toBeCloseTo(0.142 - 0.1181, 10);
+    expect(comparisonMargin(EVALUATION)).toBeCloseTo(0.0239, 10);
+  });
+
+  it("only calls a difference a ranking when it exceeds the margin", () => {
+    expect(compareScores(0.7897, 0.1633, 0.0239)).toBe("higher");
+    expect(compareScores(0.1633, 0.1281, 0.0239)).toBe("higher");
+    expect(compareScores(0.1281, 0.1633, 0.0239)).toBe("lower");
+    expect(compareScores(0.15, 0.14, 0.0239)).toBe("similar");
+    expect(compareScores(0.75, 0.5, 0.25)).toBe("similar");
+    expect(compareScores(0.25, 0.5, 0.25)).toBe("similar");
+  });
+});
+
+describe("accuracy ceiling", () => {
+  it("computes the best accuracy for a fixed number of flagged nodes by hand", () => {
+    expect(bestAccuracyAtFlagged(18, EVALUATION)).toBeCloseTo(775 / 852, 10);
+    expect(bestAccuracyAtFlagged(18, EVALUATION)).toBeCloseTo(0.9096, 4);
+    expect(bestAccuracyAtFlagged(95, EVALUATION)).toBe(1);
+    expect(bestAccuracyAtFlagged(100, EVALUATION)).toBeCloseTo(847 / 852, 10);
+    expect(bestAccuracyAtFlagged(18, EVALUATION) - EVALUATION.allLicitAccuracy).toBeCloseTo(0.0211, 4);
+  });
+});
+
+describe("averagedSeparation", () => {
+  it("follows delta * (1 + d(1 - 2 rho)) / sqrt(d + 1)", () => {
+    expect(averagedSeparation(0.5, 3)).toBeCloseTo(1, 10);
+    expect(averagedSeparation(0.5, 3, 0.5)).toBeCloseTo(0.25, 10);
+    expect(averagedSeparation(0.5, 0)).toBeCloseTo(0.5, 10);
+    expect(averagedSeparation(1, 8, 0.25)).toBeCloseTo(5 / 3, 10);
+  });
+});
+
+describe("training summaries", () => {
+  it("finds the selected candidate and the epoch limit", () => {
+    const search = [
+      candidate({ positiveWeightRule: "trainRatio", positiveWeight: 8.3409, selected: false }),
+      candidate({ selected: true, validationPrAuc: 0.7364 }),
+    ];
+    expect(selectedCandidate(training({ search }))?.validationPrAuc).toBe(0.7364);
+    expect(reachedEpochLimit(training({ selectedEpoch: 300, maxEpochs: 300 }))).toBe(true);
+    expect(reachedEpochLimit(training({ selectedEpoch: 140, maxEpochs: 300 }))).toBe(false);
+  });
+
+  it("reads the weights of the search and of the final model", () => {
+    const search = [
+      candidate({ positiveWeightRule: "trainRatio", positiveWeight: 8.3409, selected: false }),
+      candidate({ positiveWeightRule: "fixed", positiveWeight: 20 }),
+    ];
+    const runs = [
+      run("zscore", 0.1633),
+      run("gcn", 0.7897, { training: training({ search }) }),
+      run("graphsage", 0.8941, {
+        training: training({ search, positiveWeightRule: "trainRatio", positiveWeight: 9.2893 }),
+      }),
+    ];
+    expect(searchWeight(runs, "trainRatio")).toBe(8.3409);
+    expect(searchWeight(runs, "fixed")).toBe(20);
+    expect(finalTrainRatioWeight(runs)).toBe(9.2893);
+    expect(finalTrainRatioWeight([run("gcn", 0.7897, { training: training({ search }) })])).toBeNull();
+    expect(searchWeight([run("zscore", 0.1633)], "fixed")).toBeNull();
   });
 });
 
@@ -139,14 +234,33 @@ describe("parameterEntries", () => {
       ["zeroMadFeatures", "f_round_amount, f_change_output"],
     ]);
   });
+
+  it("flattens lists of objects such as the search candidates", () => {
+    expect(
+      parameterEntries({
+        search: [
+          { featureSet: "local", validationPrAuc: 0.6793, selected: false },
+          { featureSet: "local+graph", validationPrAuc: 0.7364, selected: true },
+        ],
+        fallback: ["std", "one"],
+      }),
+    ).toEqual([
+      ["search[0].featureSet", "local"],
+      ["search[0].validationPrAuc", "0,6793"],
+      ["search[0].selected", "nein"],
+      ["search[1].featureSet", "local+graph"],
+      ["search[1].validationPrAuc", "0,7364"],
+      ["search[1].selected", "ja"],
+      ["fallback", "std, one"],
+    ]);
+  });
 });
 
 describe("feature lists of a run", () => {
   it("reads features and features without spread", () => {
-    const zscore = {
-      ...run("zscore", 0.1633),
+    const zscore = run("zscore", 0.1633, {
       hyperparameters: { features: ["f_a", "f_b", "f_c"], zeroMadFeatures: ["f_b"] },
-    };
+    });
     expect(featureNames(zscore)).toEqual(["f_a", "f_b", "f_c"]);
     expect(zeroMadFeatures(zscore)).toEqual(["f_b"]);
     expect(zeroMadFeatures(run("iforest", 0.1281))).toEqual([]);
@@ -174,6 +288,8 @@ describe("figures for the evaluation text", () => {
     expect(hitsAtRecall(0.0211, 95)).toBe(2);
     expect(hitsAtRecall(0, 95)).toBe(0);
     expect(hitsAtRecall(0.5, 95)).toBe(48);
+    expect(hitsAtRecall(0.8316, 95)).toBe(79);
+    expect(hitsAtRecall(0.9474, 95)).toBe(90);
   });
 
   it("reads numeric generator parameters only", () => {

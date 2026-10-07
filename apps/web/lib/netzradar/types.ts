@@ -5,16 +5,31 @@ export type JsonObject = { [key: string]: JsonValue };
 export const NODE_LABELS = ["illicit", "licit", "unknown"] as const;
 export type NodeLabel = (typeof NODE_LABELS)[number];
 
-export const METHODS = ["zscore", "iforest", "gcn", "graphsage"] as const;
+export const METHODS = ["zscore", "iforest", "gcn", "graphsage", "mlp"] as const;
 export type Method = (typeof METHODS)[number];
+
+export const BASELINE_METHODS = ["zscore", "iforest"] as const;
+export type BaselineMethod = (typeof BASELINE_METHODS)[number];
+
+export const LEARNED_METHODS = ["gcn", "graphsage", "mlp"] as const;
+export type LearnedMethod = (typeof LEARNED_METHODS)[number];
+
+export const GRAPH_METHODS = ["gcn", "graphsage"] as const;
+export type GraphMethod = (typeof GRAPH_METHODS)[number];
 
 export const FEATURE_SETS = ["local", "local+graph"] as const;
 export type FeatureSet = (typeof FEATURE_SETS)[number];
 
+export const POSITIVE_WEIGHT_RULES = ["trainRatio", "fixed"] as const;
+export type PositiveWeightRule = (typeof POSITIVE_WEIGHT_RULES)[number];
+
+export const EDGE_MODES = ["undirected", "none"] as const;
+export type EdgeMode = (typeof EDGE_MODES)[number];
+
 export const HOPS = [0, 1, 2] as const;
 export type Hop = (typeof HOPS)[number];
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 export type SchemaVersion = typeof SCHEMA_VERSION;
 
 export interface StepRange {
@@ -77,6 +92,65 @@ export interface PrCurvePoint {
   precision: number;
 }
 
+export interface Scaling {
+  center: string;
+  scale: string;
+  madScale: number;
+  fallback: string[];
+  clip: number;
+  fitOn: string;
+  zeroMadFeatures: string[];
+  unitScaleFeatures: string[];
+}
+
+export interface SearchCandidate {
+  featureSet: FeatureSet;
+  positiveWeightRule: PositiveWeightRule;
+  positiveWeight: number;
+  validationPrAuc: number;
+  bestEpoch: number;
+  stoppedEpoch: number;
+  selected: boolean;
+}
+
+export interface TrainingEnvironment {
+  torch: string;
+  torchGeometric: string;
+  python: string;
+  platform: string;
+  threads: number;
+  deterministicAlgorithms: boolean;
+}
+
+export interface Training {
+  architecture: string;
+  layers: number;
+  hidden: number;
+  activation: string;
+  dropout: number;
+  optimizer: string;
+  learningRate: number;
+  weightDecay: number;
+  loss: string;
+  score: string;
+  positiveWeight: number;
+  positiveWeightRule: PositiveWeightRule;
+  edges: EdgeMode;
+  dtype: string;
+  scaling: Scaling;
+  features: string[];
+  maxEpochs: number;
+  patience: number;
+  selectedEpoch: number;
+  selectionMetric: "validationPrAuc";
+  validationPrAuc: number;
+  selectionSteps: StepRange;
+  validationSteps: StepRange;
+  finalFitSteps: StepRange;
+  search: SearchCandidate[];
+  environment: TrainingEnvironment;
+}
+
 export interface Run {
   method: Method;
   displayName: string;
@@ -84,6 +158,7 @@ export interface Run {
   seed: number;
   date: string;
   hyperparameters: JsonObject;
+  training: Training | null;
   prAuc: number;
   precisionAtRecall50: number;
   recallAtPrecision50: number;
@@ -131,6 +206,7 @@ export interface NetNode {
 export interface NodesFile {
   schemaVersion: SchemaVersion;
   selection: NodeSelection;
+  scoreGnnMethod: GraphMethod | null;
   nodes: NetNode[];
 }
 

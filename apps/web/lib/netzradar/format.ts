@@ -1,4 +1,4 @@
-import type { Method, NodeLabel, StepRange } from "./types";
+import type { FeatureSet, Method, NodeLabel, StepRange } from "./types";
 
 const LOCALE = "de-DE";
 const ISO_PARTS_PATTERN = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/;
@@ -14,6 +14,28 @@ export const METHOD_TEXT: Record<Method, string> = {
   iforest: "Isolation Forest",
   gcn: "GCN (Graph Convolutional Network)",
   graphsage: "GraphSAGE",
+  mlp: "MLP ohne Kanten (Kontrolle)",
+};
+
+export const METHOD_SHORT_TEXT: Record<Method, string> = {
+  zscore: "Z-Scores",
+  iforest: "Isolation Forest",
+  gcn: "GCN",
+  graphsage: "GraphSAGE",
+  mlp: "MLP",
+};
+
+export const METHOD_KIND_TEXT: Record<Method, string> = {
+  zscore: "Baseline ohne Labels",
+  iforest: "Baseline ohne Labels",
+  gcn: "Graph Neural Network, mit Labels trainiert, bezieht die Nachbarschaft ein",
+  graphsage: "Graph Neural Network, mit Labels trainiert, bezieht die Nachbarschaft ein",
+  mlp: "Kontrolle: gleiche Größe, Labels und Auswahl, aber ohne Kanten",
+};
+
+export const FEATURE_SET_TEXT: Record<FeatureSet, string> = {
+  local: "nur lokale Merkmale",
+  "local+graph": "lokale Merkmale und Graphmaße",
 };
 
 export function formatDecimal(value: number, digits = 4): string {
@@ -43,6 +65,11 @@ export function formatPercent(value: number, digits = 1): string {
 export function formatShare(count: number, total: number, digits = 1): string {
   if (total <= 0) return formatPercent(0, digits);
   return formatPercent(count / total, digits);
+}
+
+export function joinList(items: readonly string[]): string {
+  if (items.length <= 1) return items.join("");
+  return `${items.slice(0, -1).join(", ")} und ${items[items.length - 1]}`;
 }
 
 export function formatStepRange(range: StepRange): string {

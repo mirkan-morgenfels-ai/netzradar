@@ -7,22 +7,54 @@ interface ExportedRun {
   prAuc: number;
 }
 
+interface AxeViolation {
+  id: string;
+  nodes: Array<{ target: unknown[] }>;
+}
+
+interface AxeWindow {
+  axe: {
+    run: (context: Document, options: { runOnly: { type: "tag"; values: string[] } }) => Promise<{ violations: AxeViolation[] }>;
+  };
+}
+
 interface ExportedNode {
   id: string;
   seedRank: number | null;
+  scoreGnn: number | null;
 }
 
 const DATA_DIR = path.resolve(__dirname, "../../../data/k3");
 const METRICS = JSON.parse(readFileSync(path.join(DATA_DIR, "metrics.json"), "utf8")) as {
   runs: ExportedRun[];
-  evaluation: { prevalence: number; randomPrAucExpected: number };
+  evaluation: { prevalence: number; randomPrAucExpected: number; randomPrAucQ95: number };
 };
+const MARGIN = METRICS.evaluation.randomPrAucQ95 - METRICS.evaluation.randomPrAucExpected;
+const AXE_SOURCE = readFileSync(require.resolve("axe-core/axe.min.js"), "utf8");
+const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"];
+const AXE_WIDTHS = [390, 768, 1280];
+const SHORT_NAME: Record<string, string> = { zscore: "Z-Scores", iforest: "Isolation Forest", gcn: "GCN", graphsage: "GraphSAGE", mlp: "MLP" };
+const NEIGHBOURHOOD_SHARE = "der größere Teil des Vorsprungs der Graph Neural Networks damit aus der Nachbarschaft";
 const INK = "rgb(17, 17, 17)";
-const NODES = JSON.parse(readFileSync(path.join(DATA_DIR, "nodes.json"), "utf8")) as { nodes: ExportedNode[] };
+const NODES = JSON.parse(readFileSync(path.join(DATA_DIR, "nodes.json"), "utf8")) as {
+  scoreGnnMethod: "gcn" | "graphsage" | null;
+  nodes: ExportedNode[];
+};
 const FIRST_SEED = NODES.nodes.find((node) => node.seedRank === 1);
+const STEP_4_METHODS = ["gcn", "graphsage", "mlp"];
+const GNN_LABEL = { gcn: "GCN", graphsage: "GraphSAGE" } as const;
+const PENDING_TEXT = "Schritt 4, noch nicht gemessen";
 
 function germanDecimal(value: number): string {
   return value.toFixed(4).replace(".", ",");
+}
+
+function runOf(method: string): ExportedRun | undefined {
+  return METRICS.runs.find((run) => run.method === method);
+}
+
+function isAbove(value: number, reference: number): boolean {
+  return value - reference > MARGIN;
 }
 
 function watchRequests(page: Page, baseURL: string | undefined): string[] {
@@ -82,10 +114,19 @@ test("NetzRadar page renders headline, metrics, graph and node details without l
     germanDecimal(METRICS.evaluation.randomPrAucExpected),
   );
   await expect(page.getByTestId("metrics-row-prevalence")).toContainText(germanDecimal(METRICS.evaluation.prevalence));
-  for (const method of ["gcn", "graphsage"]) {
-    if (!METRICS.runs.some((run) => run.method === method)) {
-      await expect(page.getByTestId(`metrics-row-${method}`)).toContainText("Schritt 4, noch nicht gemessen");
+  for (const method of STEP_4_METHODS) {
+    const row = page.getByTestId(`metrics-row-${method}`);
+    if (METRICS.runs.some((run) => run.method === method)) {
+      await expect(row).not.toContainText(PENDING_TEXT);
+    } else {
+      await expect(row).toContainText(PENDING_TEXT);
     }
+  }
+  if (STEP_4_METHODS.every((method) => METRICS.runs.some((run) => run.method === method))) {
+    await expect(page.getByText("noch nicht gemessen")).toHaveCount(0);
+    await expect(page.getByText("noch nicht berechnet")).toHaveCount(0);
+    await expect(page.getByTestId("homophily-caveat")).toBeVisible();
+    await expect(page.getByTestId("search-table")).toBeVisible();
   }
   const chart = page.getByTestId("pr-curve").locator("svg.recharts-surface").first();
   await expect(chart).toBeVisible();
@@ -108,10 +149,23 @@ test("NetzRadar page renders headline, metrics, graph and node details without l
   expect(FIRST_SEED).toBeDefined();
   const firstRow = page.getByTestId("top-node-row").first();
   await expect(firstRow).toHaveAttribute("data-node-id", FIRST_SEED?.id ?? "");
+  if (NODES.scoreGnnMethod === null) {
+    await expect(page.getByTestId("top-nodes-gnn-header")).toHaveCount(0);
+  } else {
+    const label = GNN_LABEL[NODES.scoreGnnMethod];
+    await expect(page.getByTestId("top-nodes-gnn-header")).toHaveText(`Score GNN (${label})`);
+    await expect(firstRow.getByTestId("top-node-gnn")).toHaveText(germanDecimal(FIRST_SEED?.scoreGnn ?? Number.NaN));
+  }
   await firstRow.click();
   await expect(page.getByTestId("node-detail-id")).toHaveText(FIRST_SEED?.id ?? "");
   await expect(page.getByTestId("node-detail")).toContainText("1 von");
   await expect(firstRow).toHaveAttribute("aria-current", "true");
+  if (NODES.scoreGnnMethod === null) {
+    await expect(page.getByTestId("node-detail")).toContainText("Schritt 4, noch nicht berechnet");
+  } else {
+    await expect(page.getByTestId("node-detail")).toContainText(`Score GNN (${GNN_LABEL[NODES.scoreGnnMethod]})`);
+    await expect(page.getByTestId("node-detail-gnn")).toHaveText(germanDecimal(FIRST_SEED?.scoreGnn ?? Number.NaN));
+  }
 
   await page.getByTestId("top-node-row").nth(1).getByRole("button").press("Enter");
   await expect(page.getByTestId("node-detail-id")).toHaveText(
@@ -134,6 +188,83 @@ test("NetzRadar page renders headline, metrics, graph and node details without l
   expect(errors).toEqual([]);
   expect(await cspViolations(page)).toEqual([]);
 });
+
+test("assessment sentences follow the differences in metrics.json", async ({ page }) => {
+  await page.goto("/projects/netzradar");
+  const zscore = runOf("zscore");
+  const iforest = runOf("iforest");
+  const gcn = runOf("gcn");
+  const graphsage = runOf("graphsage");
+  const mlp = runOf("mlp");
+  const graphRuns = [gcn, graphsage].filter((run): run is ExportedRun => run !== undefined);
+  const baselines = [zscore, iforest].filter((run): run is ExportedRun => run !== undefined);
+  const baseline = baselines.reduce<ExportedRun | undefined>((best, run) => (!best || run.prAuc > best.prAuc ? run : best), undefined);
+
+  if (zscore && iforest) {
+    const difference = iforest.prAuc - zscore.prAuc;
+    const pair = page.getByTestId("baseline-pair");
+    await expect(pair).toContainText(germanDecimal(Math.abs(difference)));
+    if (Math.abs(difference) > MARGIN) {
+      await expect(pair).toContainText(difference > 0 ? "über den robusten Z-Scores" : "unter den robusten Z-Scores");
+    } else {
+      await expect(pair).toContainText("nicht belastbar");
+    }
+  }
+
+  if (gcn && graphsage) {
+    const difference = graphsage.prAuc - gcn.prAuc;
+    const amount = germanDecimal(Math.abs(difference));
+    const expected = isAbove(graphsage.prAuc, gcn.prAuc)
+      ? `GraphSAGE liegt um ${amount} vor GCN.`
+      : isAbove(gcn.prAuc, graphsage.prAuc)
+        ? `GCN liegt um ${amount} vor GraphSAGE.`
+        : `GCN und GraphSAGE liegen nur ${amount} auseinander`;
+    await expect(page.getByTestId("gcn-vs-graphsage")).toContainText(expected);
+  }
+
+  if (mlp && baseline && graphRuns.length > 0) {
+    const decomposition = page.getByTestId("decomposition");
+    const supervision = mlp.prAuc - baseline.prAuc;
+    await expect(decomposition).toContainText(`Es erreicht ${germanDecimal(mlp.prAuc)}.`);
+    if (Math.abs(supervision) > MARGIN) {
+      await expect(decomposition).toContainText(germanDecimal(Math.abs(supervision)));
+    }
+    for (const run of graphRuns) {
+      await expect(decomposition).toContainText(`${SHORT_NAME[run.method]} ${germanDecimal(run.prAuc)} (`);
+      await expect(decomposition).toContainText(germanDecimal(Math.abs(run.prAuc - mlp.prAuc)));
+    }
+    const share = graphRuns.every(
+      (run) => isAbove(run.prAuc, mlp.prAuc) && run.prAuc - mlp.prAuc - Math.max(supervision, 0) > MARGIN,
+    );
+    if (share) {
+      await expect(decomposition).toContainText(NEIGHBOURHOOD_SHARE);
+    } else {
+      await expect(decomposition).not.toContainText(NEIGHBOURHOOD_SHARE);
+    }
+    const lead = graphRuns.every((run) => isAbove(run.prAuc, baseline.prAuc) && isAbove(run.prAuc, mlp.prAuc));
+    await expect(page.locator("#homophily-caveat-title")).toHaveText(
+      lead
+        ? "Vorbehalt: Der Vorsprung ist zum Teil eingebaut"
+        : "Vorbehalt: Ein Vorsprung der Nachbarschaft wäre zum Teil eingebaut",
+    );
+  }
+});
+
+for (const width of AXE_WIDTHS) {
+  test(`NetzRadar page has no axe violations at ${width} px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/projects/netzradar");
+    await expect(page.getByTestId("graph-view")).toHaveAttribute("data-state", "ready", { timeout: 30_000 });
+    await page.addScriptTag({ content: AXE_SOURCE });
+    const violations = await page.evaluate(async (tags) => {
+      const result = await (window as unknown as AxeWindow).axe.run(document, { runOnly: { type: "tag", values: tags } });
+      return result.violations.map(
+        (violation) => `${violation.id}: ${violation.nodes.map((node) => node.target.join(" ")).join(" | ")}`,
+      );
+    }, AXE_TAGS);
+    expect(violations).toEqual([]);
+  });
+}
 
 test("start page links to the NetzRadar page", async ({ page }) => {
   await page.goto("/");

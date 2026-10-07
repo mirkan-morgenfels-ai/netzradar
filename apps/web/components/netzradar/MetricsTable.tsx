@@ -1,12 +1,8 @@
 import { cx } from "@portfolio/ui";
-import { formatDecimal, formatInteger, METHOD_TEXT } from "@/lib/netzradar/format";
+import { FEATURE_SET_TEXT, formatDecimal, formatInteger, METHOD_KIND_TEXT, METHOD_TEXT } from "@/lib/netzradar/format";
 import { featureNames, labelledTestCount, metricRows, zeroMadFeatures } from "@/lib/netzradar/summary";
-import type { FeatureSet, Metrics, Run } from "@/lib/netzradar/types";
-
-const FEATURE_SET_TEXT: Record<FeatureSet, string> = {
-  local: "nur lokale Merkmale",
-  "local+graph": "lokale Merkmale und Graphmaße",
-};
+import type { Metrics, Run } from "@/lib/netzradar/types";
+import { ScrollRegion } from "./ScrollRegion";
 
 const CELL = "px-4 py-3";
 const NUMBER_CELL = cx(CELL, "text-right tabular-nums");
@@ -20,6 +16,14 @@ function featureText(run: Run): string {
   return `${base}, ${count} Merkmale, davon ${count - inactive} wirksam (MAD = 0 bei ${inactive})`;
 }
 
+function trainingText(run: Run): string {
+  const { training } = run;
+  if (training === null) return "ohne Labels angepasst";
+  const neighbourhood =
+    training.edges === "none" ? "ohne Kanten" : `Nachbarschaft bis ${training.layers} Kanten Abstand`;
+  return `mit Labels trainiert, ${neighbourhood}`;
+}
+
 export function MetricsTable({ metrics }: { metrics: Metrics }) {
   const rows = metricRows(metrics.runs);
   const { evaluation, split } = metrics;
@@ -30,13 +34,15 @@ export function MetricsTable({ metrics }: { metrics: Metrics }) {
         Knoten mit Label, davon {formatInteger(evaluation.testPositives)} auffällig. Knoten ohne Label sind nicht
         bewertet. Seed {metrics.seed}.
       </p>
-      <div className="overflow-x-auto rounded-lg border border-line bg-surface">
+      <ScrollRegion labelledBy="metrics-table-caption" className="rounded-lg border border-line bg-surface">
         <table
-          className="w-full min-w-[42rem] border-collapse text-sm"
+          className="w-full min-w-[46rem] border-collapse text-sm"
           data-testid="metrics-table"
           aria-describedby="metrics-table-note"
         >
-          <caption className="sr-only">Kennzahlen je Verfahren auf den Testknoten mit Label</caption>
+          <caption id="metrics-table-caption" className="sr-only">
+            Kennzahlen je Verfahren auf den Testknoten mit Label
+          </caption>
           <thead>
             <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-stone">
               <th scope="col" className={cx(CELL, "font-medium")}>
@@ -63,6 +69,7 @@ export function MetricsTable({ metrics }: { metrics: Metrics }) {
                   <th scope="row" className={cx(CELL, "text-left font-normal")}>
                     <span className="font-medium">{row.run.displayName}</span>
                     <span className="block text-xs text-stone">{featureText(row.run)}</span>
+                    <span className="block text-xs text-stone">{trainingText(row.run)}</span>
                   </th>
                   <td className={cx(NUMBER_CELL, "font-semibold")} data-testid={`pr-auc-${row.method}`}>
                     {formatDecimal(row.run.prAuc)}
@@ -75,7 +82,7 @@ export function MetricsTable({ metrics }: { metrics: Metrics }) {
                 <tr key={row.method} data-testid={`metrics-row-${row.method}`} className="border-t border-line">
                   <th scope="row" className={cx(CELL, "text-left font-normal")}>
                     <span className="font-medium">{METHOD_TEXT[row.method]}</span>
-                    <span className="block text-xs text-stone">Graph Neural Network, bezieht die Nachbarschaft ein</span>
+                    <span className="block text-xs text-stone">{METHOD_KIND_TEXT[row.method]}</span>
                   </th>
                   <td colSpan={4} className={cx(CELL, "text-stone")}>
                     Schritt 4, noch nicht gemessen
@@ -106,7 +113,7 @@ export function MetricsTable({ metrics }: { metrics: Metrics }) {
             </tr>
           </tbody>
         </table>
-      </div>
+      </ScrollRegion>
     </div>
   );
 }

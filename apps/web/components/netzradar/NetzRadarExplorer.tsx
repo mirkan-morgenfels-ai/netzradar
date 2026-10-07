@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { METHOD_SHORT_TEXT } from "@/lib/netzradar/format";
 import { buildAdjacency, neighborsOf, seedNodes } from "@/lib/netzradar/graph";
-import type { NetEdge, NetNode } from "@/lib/netzradar/types";
+import type { GraphMethod, NetEdge, NetNode } from "@/lib/netzradar/types";
 import { GraphLegend } from "./GraphLegend";
 import { GraphView } from "./GraphView";
 import { NodeDetail } from "./NodeDetail";
@@ -11,10 +12,12 @@ import { TopNodesTable } from "./TopNodesTable";
 export interface NetzRadarExplorerProps {
   nodes: NetNode[];
   edges: NetEdge[];
+  scoreGnnMethod: GraphMethod | null;
   description: string;
 }
 
-export function NetzRadarExplorer({ nodes, edges, description }: NetzRadarExplorerProps) {
+export function NetzRadarExplorer({ nodes, edges, scoreGnnMethod, description }: NetzRadarExplorerProps) {
+  const gnnLabel = scoreGnnMethod === null ? null : METHOD_SHORT_TEXT[scoreGnnMethod];
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const adjacency = useMemo(() => buildAdjacency(nodes.map((node) => node.id), edges), [nodes, edges]);
   const byId = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
@@ -44,11 +47,17 @@ export function NetzRadarExplorer({ nodes, edges, description }: NetzRadarExplor
       </div>
       <div className="min-w-0 lg:col-start-3 lg:row-span-2 lg:row-start-1">
         <div className="lg:sticky lg:top-6">
-          <NodeDetail node={selected} neighbors={neighbors} seedCount={seeds.length} onSelect={select} />
+          <NodeDetail
+            node={selected}
+            neighbors={neighbors}
+            seedCount={seeds.length}
+            gnnLabel={gnnLabel}
+            onSelect={select}
+          />
         </div>
       </div>
       <div className="min-w-0 lg:col-span-2">
-        <TopNodesTable nodes={seeds} selectedId={selectedId} onSelect={select} />
+        <TopNodesTable nodes={seeds} selectedId={selectedId} gnnLabel={gnnLabel} onSelect={select} />
       </div>
     </div>
   );
