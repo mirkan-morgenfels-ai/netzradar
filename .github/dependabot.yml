@@ -1,0 +1,56 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+      npm-major:
+        patterns:
+          - "*"
+        update-types:
+          - major
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+  - package-ecosystem: uv
+    directory: /services/k3-train
+    schedule:
+      interval: monthly
+    groups:
+      python-tools:
+        patterns:
+          - pytest
+          - ruff
+      python-numerics:
+        patterns:
+          - networkx
+          - numpy
+          - pandas
+          - scikit-learn
+          - scipy
+      python-gnn:
+        patterns:
+          - torch
+          - torch-geometric
+    ignore:
+      - dependency-name: torch
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: torch-geometric
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
