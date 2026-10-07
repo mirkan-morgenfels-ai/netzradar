@@ -126,7 +126,7 @@ test("NetzRadar page renders headline, metrics, graph and node details without l
 
   await expect(page.getByRole("heading", { level: 1, name: "NetzRadar" })).toBeVisible();
   await expect(page.getByRole("heading", { level: 1, name: "NetzRadar" })).toHaveCSS("font-family", /Cormorant/);
-  await expect(page.getByText("Projekt K3 · Graph-ML", { exact: true })).toBeVisible();
+  await expect(page.getByText("Projekt 03 · Graph-ML", { exact: true })).toBeVisible();
 
   const metricsTable = page.getByTestId("metrics-table");
   await expect(metricsTable).toBeVisible();
@@ -305,6 +305,9 @@ for (const width of AXE_WIDTHS) {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/projects/netzradar");
     await expect(page.getByTestId("graph-view")).toHaveAttribute("data-state", "ready", { timeout: 30_000 });
+    await page.waitForFunction(() =>
+      document.getAnimations().every((animation) => !(animation instanceof CSSTransition) || animation.playState !== "running"),
+    );
     await page.addScriptTag({ content: AXE_SOURCE });
     const violations = await page.evaluate(async (tags) => {
       const result = await (window as unknown as AxeWindow).axe.run(document, { runOnly: { type: "tag", values: tags } });

@@ -22,7 +22,7 @@ describe("PROJECTS", () => {
     expect(PROJECTS).toHaveLength(3);
     expect(PROJECTS.map((project) => project.slug)).toEqual(["depotdoktor", "kontoklar", "netzradar"]);
     expect(PROJECTS.map((project) => project.code)).toEqual(["K1", "K2", "K3"]);
-    expect(PROJECTS.map((project) => project.kicker)).toEqual(["Projekt K1", "Projekt K2", "Projekt K3"]);
+    expect(PROJECTS.map((project) => project.kicker)).toEqual(["Projekt 01", "Projekt 02", "Projekt 03"]);
     expect(PROJECTS.map((project) => project.number)).toEqual(["01", "02", "03"]);
     expect(PROJECTS.map((project) => project.topic)).toEqual(["Finanzdaten", "Maschinelles Lernen", "Graph-ML"]);
   });
