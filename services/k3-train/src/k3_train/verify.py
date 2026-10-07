@@ -1,19 +1,34 @@
+import importlib.util
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from k3_train.export import build_exports
+from k3_train.gnn_results import GNN_METHODS, GnnOutput
 from k3_train.jsonio import read_json, round_floats
 from k3_train.load import load_synthetic
-from k3_train.pipeline import DEFAULT_SEED, run_baseline, run_log
+from k3_train.pipeline import DEFAULT_SEED, run_baseline
 from k3_train.runs import latest_run_log
 from k3_train.synth import SynthConfig
 
-IGNORED_KEYS = frozenset({"generatedAt", "date"})
+IGNORED_KEYS = frozenset({"generatedAt", "date", "environment"})
 TOLERANCE = 1e-4
+FLOAT_SLACK = 1e-9
 MAX_REPORTED = 20
 VERIFIED_DATASET = "synthetic"
+GNN_MODULES = ("torch", "torch_geometric")
+MISSING_GNN_MESSAGE = (
+    "metrics.json enthält GNN-Runs, zum Nachrechnen fehlen torch und torch_geometric. "
+    "Bitte das Extra installieren: uv sync --extra gnn, dann uv run --extra gnn k3-train verify "
+    "(mit make: make verify)."
+)
+REQUIRE_GNN_ENV = "K3_REQUIRE_GNN"
+MISSING_GNN_RUNS_MESSAGE = (
+    f"{REQUIRE_GNN_ENV}=1, aber metrics.json enthält keine GNN-Runs (gcn, graphsage, mlp). "
+    "Bitte k3-train gnn und danach k3-train export ausführen (mit make: make gnn, make export)."
+)
 
 
 @dataclass(frozen=True)
@@ -46,7 +61,7 @@ def compare(expected: Any, actual: Any, tolerance: float = TOLERANCE, path: str 
     if isinstance(expected, int) and isinstance(actual, int):
         return [] if expected == actual else [f"{path}: {expected} erwartet, {actual} gefunden"]
     if isinstance(expected, int | float) and isinstance(actual, int | float):
-        if abs(float(expected) - float(actual)) <= tolerance:
+        if abs(float(expected) - float(actual)) <= tolerance + FLOAT_SLACK:
             return []
         return [f"{path}: {expected} erwartet, {actual} gefunden"]
     if expected == actual:
@@ -54,15 +69,34 @@ def compare(expected: Any, actual: Any, tolerance: float = TOLERANCE, path: str 
     return [f"{path}: {expected!r} erwartet, {actual!r} gefunden"]
 
 
-def recompute_synthetic(seed: int = DEFAULT_SEED) -> Recomputation:
+def gnn_available() -> bool:
+    return all(importlib.util.find_spec(name) is not None for name in GNN_MODULES)
+
+
+def has_gnn_runs(metrics: dict[str, Any]) -> bool:
+    runs = metrics.get("runs", [])
+    return isinstance(runs, list) and any(
+        isinstance(run, dict) and run.get("method") in GNN_METHODS for run in runs
+    )
+
+
+def _recompute_gnn(dataset: Any, measures: Any, seed: int) -> GnnOutput:
+    from k3_train.gnn_pipeline import run_gnn
+
+    return run_gnn(dataset, measures, run_date="", seed=seed)
+
+
+def recompute_synthetic(include_gnn: bool = False, seed: int = DEFAULT_SEED) -> Recomputation:
     dataset = load_synthetic(SynthConfig())
     output = run_baseline(dataset, run_date="", seed=seed)
-    bundle = build_exports(dataset, output, generated_at="")
+    gnn = _recompute_gnn(dataset, output.measures, seed) if include_gnn else None
+    bundle = build_exports(dataset, output, generated_at="", gnn=gnn)
+    logs = [*output.run_logs(), *([] if gnn is None else gnn.run_logs())]
     return Recomputation(
         metrics=bundle.metrics,
         nodes=bundle.nodes,
         edges=bundle.edges,
-        run_logs={run["method"]: round_floats(run_log(output, run)) for run in output.runs},
+        run_logs={log["method"]: round_floats(log) for log in logs},
     )
 
 
@@ -89,7 +123,14 @@ def verify(export_dir: Path, runs_dir: Path) -> int:
             "nachgerechnet wird nur das synthetische Netz."
         )
         return 0
-    recomputed = recompute_synthetic()
+    include_gnn = has_gnn_runs(committed)
+    if not include_gnn and os.environ.get(REQUIRE_GNN_ENV) == "1":
+        print(MISSING_GNN_RUNS_MESSAGE, file=sys.stderr)
+        return 1
+    if include_gnn and not gnn_available():
+        print(MISSING_GNN_MESSAGE, file=sys.stderr)
+        return 1
+    recomputed = recompute_synthetic(include_gnn=include_gnn)
     targets: list[tuple[Path, Any]] = [
         (metrics_path, recomputed.metrics),
         (export_dir / "nodes.json", recomputed.nodes),

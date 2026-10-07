@@ -1,7 +1,8 @@
 from pathlib import Path
 
+from k3_train.gnn_results import GnnOutput
 from k3_train.jsonio import round_floats, write_json
-from k3_train.pipeline import BaselineOutput, run_log
+from k3_train.pipeline import BaselineOutput
 
 
 def run_log_name(date: str, dataset: str, method: str) -> str:
@@ -13,10 +14,10 @@ def latest_run_log(runs_dir: Path, dataset: str, method: str) -> Path | None:
     return candidates[-1] if candidates else None
 
 
-def write_run_logs(output: BaselineOutput, out_dir: Path) -> list[Path]:
+def write_run_logs(output: BaselineOutput | GnnOutput, out_dir: Path) -> list[Path]:
     paths = []
-    for run in output.runs:
-        path = out_dir / run_log_name(run["date"], output.dataset["name"], run["method"])
-        write_json(path, round_floats(run_log(output, run)))
+    for log in output.run_logs():
+        path = out_dir / run_log_name(log["date"], output.dataset["name"], log["method"])
+        write_json(path, round_floats(log))
         paths.append(path)
     return paths

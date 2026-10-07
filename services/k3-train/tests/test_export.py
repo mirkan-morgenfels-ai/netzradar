@@ -64,6 +64,9 @@ def test_evaluation_numbers_are_consistent(bundle: ExportBundle) -> None:
 
 def test_nodes_follow_the_contract(bundle: ExportBundle) -> None:
     assert validate_nodes(bundle.nodes) == []
+    assert list(bundle.nodes) == ["schemaVersion", "selection", "scoreGnnMethod", "nodes"]
+    assert bundle.nodes["scoreGnnMethod"] is None
+    assert all(node["scoreGnn"] is None for node in bundle.nodes["nodes"])
     assert bundle.nodes["selection"] == {
         "scoreField": "scoreIforest",
         "pool": "test",
@@ -163,7 +166,7 @@ def test_export_files_are_formatted_and_byte_identical(
         assert content == right.read_bytes()
         assert b"\r" not in content
         assert content.endswith(b"}\n")
-        assert content.startswith(b'{\n  "schemaVersion": 2,')
+        assert content.startswith(b'{\n  "schemaVersion": 3,')
 
 
 def test_layout_does_not_depend_on_the_hash_seed() -> None:
