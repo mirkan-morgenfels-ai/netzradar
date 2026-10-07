@@ -4,6 +4,7 @@ import {
   METHOD_KIND_TEXT,
   METHOD_SHORT_TEXT,
   METHOD_TEXT,
+  formatDateRange,
   formatDecimal,
   formatInteger,
   formatIsoDate,
@@ -13,6 +14,7 @@ import {
   formatShare,
   formatStepRange,
   joinList,
+  withMinusSign,
 } from "../format";
 import { METHODS } from "../types";
 
@@ -43,6 +45,7 @@ describe("formatPlainNumber", () => {
     expect(formatPlainNumber(0.04)).toBe("0,04");
     expect(formatPlainNumber(200)).toBe("200");
     expect(formatPlainNumber(12000)).toBe("12000");
+    expect(formatPlainNumber(-2)).toBe("−2");
   });
 });
 
@@ -51,6 +54,10 @@ describe("formatPercent and formatShare", () => {
     expect(formatPercent(0.0243)).toBe(`2,4${NBSP}%`);
     expect(formatPercent(0.2156)).toBe(`21,6${NBSP}%`);
     expect(formatPercent(0.5, 0)).toBe(`50${NBSP}%`);
+  });
+
+  it("shows the test prevalence 95 / 852 = 0,1115 as 11,15 %", () => {
+    expect(formatPercent(0.1115, 2)).toBe(`11,15${NBSP}%`);
   });
 
   it("computes shares by hand", () => {
@@ -73,6 +80,11 @@ describe("dates and ranges", () => {
     expect(formatIsoTimeUtc("2026-10-06T17:10:40Z")).toBe("17:10 UTC");
     expect(formatIsoTimeUtc("2026-10-06")).toBeNull();
   });
+
+  it("writes one date or a range of run dates", () => {
+    expect(formatDateRange({ from: "2026-10-06", to: "2026-10-06" })).toBe("06.10.2026");
+    expect(formatDateRange({ from: "2026-10-06", to: "2026-10-07" })).toBe("06.10.2026 bis 07.10.2026");
+  });
 });
 
 describe("LABEL_TEXT", () => {
@@ -87,7 +99,13 @@ describe("method texts", () => {
       expect(Object.keys(texts)).toEqual([...METHODS]);
     }
     expect(METHOD_TEXT.mlp).toBe("MLP ohne Kanten (Kontrolle)");
-    expect(METHOD_SHORT_TEXT.graphsage).toBe("GraphSAGE");
+    expect(METHOD_SHORT_TEXT).toEqual({
+      zscore: "Z-Scores",
+      iforest: "Isolation Forest",
+      gcn: "GCN",
+      graphsage: "GraphSAGE",
+      mlp: "MLP (ohne Kanten)",
+    });
   });
 });
 
@@ -101,8 +119,16 @@ describe("joinList", () => {
 });
 
 describe("negative decimals", () => {
-  it("keeps the sign of logit differences", () => {
-    expect(formatDecimal(-19.9567)).toBe("-19,9567");
+  it("writes the sign of logit differences as a typographic minus U+2212", () => {
+    expect(formatDecimal(-19.9567)).toBe("−19,9567");
+    expect(formatDecimal(-19.9567).codePointAt(0)).toBe(0x2212);
     expect(formatDecimal(17.2586)).toBe("17,2586");
+    expect(formatDecimal(-1234.5, 1)).toBe("−1.234,5");
+  });
+
+  it("replaces only a leading hyphen", () => {
+    expect(withMinusSign("-0,5")).toBe("−0,5");
+    expect(withMinusSign("0,5")).toBe("0,5");
+    expect(withMinusSign("A-B")).toBe("A-B");
   });
 });

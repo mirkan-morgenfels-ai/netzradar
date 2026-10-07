@@ -73,7 +73,7 @@ export function NodeDetail({ node, neighbors, seedCount, gnnLabel, onSelect }: N
             <Row term="Score robuste Z-Scores">{formatDecimal(node.scoreZscore)}</Row>
             <Row term={gnnLabel === null ? "Score GNN" : `Score GNN (${gnnLabel})`}>
               {node.scoreGnn === null ? (
-                <span className="text-stone">Schritt 4, noch nicht berechnet</span>
+                <span className="text-stone">noch nicht berechnet</span>
               ) : (
                 <span data-testid="node-detail-gnn">{formatDecimal(node.scoreGnn)}</span>
               )}

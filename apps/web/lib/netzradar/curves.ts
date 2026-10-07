@@ -1,5 +1,5 @@
 import { CHART_COLORS } from "@portfolio/charts/theme";
-import { formatDecimal, METHOD_TEXT } from "./format";
+import { formatDecimal, METHOD_SHORT_TEXT } from "./format";
 import type { EvaluationInfo, Method, PrCurvePoint, Run } from "./types";
 
 export interface CurveStyle {
@@ -31,7 +31,7 @@ export const PREVALENCE_LEVEL_STYLE: CurveStyle = { color: CHART_COLORS.stone, d
 
 export function curveSeries(runs: readonly Run[]): CurveSeries[] {
   return runs.map((run) => ({
-    name: METHOD_TEXT[run.method],
+    name: METHOD_SHORT_TEXT[run.method],
     points: run.prCurve,
     ...METHOD_CURVE_STYLES[run.method],
   }));

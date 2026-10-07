@@ -1,12 +1,12 @@
 # Datensätze: Bezug, Lizenzen, Ablage
 
-Grundsatz: Rohdaten kommen nie ins Repository. `services/k3-train/data/raw/` und `services/k3-train/data/processed/` stehen in der Root-`.gitignore` und in `services/k3-train/.gitignore`. Der Datenordner, unter dem `raw/` und `processed/` liegen, lässt sich mit `--data-dir` (Befehle `data`, `baseline`, `export`) oder der Umgebungsvariablen `K3_DATA_DIR` aus dem Repository herausverlegen; ohne beides gilt `services/k3-train/data/`. Veröffentlicht werden nur Code, Metriken, Plots und Stichproben synthetischer Daten. Bei widersprüchlichen Lizenzangaben gilt die restriktivere.
+Grundsatz: Rohdaten kommen nie ins Repository. `services/k3-train/data/raw/` und `services/k3-train/data/processed/` stehen in der Root-`.gitignore` und in `services/k3-train/.gitignore`. Der Datenordner, unter dem `raw/` und `processed/` liegen, lässt sich mit `--data-dir` (Befehle `data`, `baseline`, `gnn`, `export`) oder der Umgebungsvariablen `K3_DATA_DIR` aus dem Repository herausverlegen; ohne beides gilt `services/k3-train/data/`. Veröffentlicht werden nur Code, Metriken, Plots und Stichproben synthetischer Daten. Bei widersprüchlichen Lizenzangaben gilt die restriktivere.
 
 | Datensatz | Lizenz | Bezug | Ablage lokal | Veröffentlicht | Stand 06.10.2026 |
 |---|---|---|---|---|---|
 | Synthetisches Transaktionsnetz | MIT | `services/k3-train/src/k3_train/synth.py` | wird erzeugt, aufbereitet unter `services/k3-train/data/processed/synthetic/` | Ausschnitt und Kennzahlen in `data/k3/`, Protokolle in `docs/runs/` | umgesetzt, öffentliche Demo |
 | IBM Transactions for Anti-Money Laundering | CDLA-Sharing-1.0 (Daten), Apache-2.0 (Code) | Kaggle `ealtman2019/ibm-transactions-for-anti-money-laundering-aml`, GitHub IBM/AML-Data | `<Datenordner>/raw/ibm-aml/` | noch nichts | Lader fehlt, Datensatzentscheidung offen |
-| Elliptic Bitcoin Dataset | CC BY-NC-ND 4.0 | Kaggle `ellipticco/elliptic-data-set` | `<Datenordner>/raw/elliptic/` mit Datenordner außerhalb von OneDrive (`--data-dir` oder `K3_DATA_DIR`), Rohdaten auch per `--raw-dir` | nichts | Lader nur an erfundener Fixture getestet |
+| Elliptic Bitcoin Dataset | CC BY-NC-ND 4.0 | Kaggle `ellipticco/elliptic-data-set` | `<Datenordner>/raw/elliptic/` mit Datenordner außerhalb synchronisierter Ordner (`--data-dir` oder `K3_DATA_DIR`), Rohdaten auch per `--raw-dir` | nichts | Lader nur an erfundener Fixture getestet |
 
 Welche Datensätze veröffentlicht werden dürfen, steht im Code: `services/k3-train/src/k3_train/datasets.py` setzt `publishable` für `synthetic` auf `True` und für `elliptic` auf `False`. Nur freigegebene Datensätze gelangen nach `data/k3/` und `docs/runs/`.
 
@@ -27,7 +27,7 @@ Darf nicht:
 - aus Elliptic irgendetwas: keine Rohdaten, keine bearbeiteten Fassungen, keine Ausschnitte, keine Knoten-IDs, keine Merkmalswerte, keine Scores je Knoten, keine Layouts, keine Laufprotokolle. Der Code erzwingt das: `k3-train export --dataset elliptic` endet mit Exit 2, und `k3-train baseline --dataset elliptic` schreibt seine Protokolle nach `<Datenordner>/processed/elliptic/runs/` statt nach `docs/runs/`.
 - aus IBM-AML vor der Datensatzentscheidung nichts. Danach ist ein Ausschnitt in `data/k3/` möglich, mit Quellenangabe und unter CDLA-Sharing-1.0 für diese Datendateien.
 
-Offen: Das Umsetzungsdokument (3.4, 3.10) erlaubt für Elliptic aggregierte Ergebnismetriken mit Verweis auf die Originalquelle. Derzeit wird aus Elliptic gar nichts veröffentlicht, auch keine Kennzahl. Ob einzelne aggregierte Werte, etwa die PR-AUC je Verfahren, ins README dürfen, entscheidet Dennis.
+Offen: Für Elliptic sind höchstens aggregierte Ergebnismetriken mit Verweis auf die Originalquelle vorgesehen (wie in Abschnitt 6 der Nutzungsbedingungen). Derzeit wird aus Elliptic gar nichts veröffentlicht, auch keine Kennzahl. Ob einzelne aggregierte Werte, etwa die PR-AUC je Verfahren, ins README dürfen, entscheidet der Autor.
 
 ## Synthetisches Transaktionsnetz (MIT)
 
@@ -106,26 +106,26 @@ Split des synthetischen Netzes: Training 1 bis 21, Validierung 18 bis 21 (innerh
 
 ## Elliptic Bitcoin Dataset (CC BY-NC-ND 4.0, nur lokal)
 
-Kennzahlen laut Umsetzungsdokument 3.4:
+Kennzahlen laut Weber et al. (2019, arXiv:1908.02591):
 
 - 203.769 Transaktionsknoten, 234.355 gerichtete Kanten, 49 Zeitschritte. Die Zeitschritte liegen im Abstand von etwa zwei Wochen; jeder enthält eine zusammenhängende Komponente von Transaktionen, die innerhalb von unter drei Stunden auf der Blockchain erschienen.
 - Labels nach Elmougy und Liu (arXiv:2306.06108): 4.545 illicit (2 %), 42.019 licit (21 %), 157.205 unknown (77 %); gelabelt sind 46.564 von 203.769 Knoten. Unter den gelabelten Knoten sind 4.545 / 46.564 ≈ 9,8 % illicit.
-- Merkmalszahl offen: Das Umsetzungsdokument nennt 166 Merkmale (94 lokal, 72 aggregiert), in der Literatur wird teils 165 oder 167 gezählt.
+- Merkmalszahl offen: Weber et al. (2019) nennen 166 Merkmale (94 lokal einschließlich des Zeitschritts, 72 aggregiert), in der Literatur wird teils 165 oder 167 gezählt.
 
-Wie der Lader die Merkmale zählt und benennt (`load_elliptic` in `services/k3-train/src/k3_train/load.py`): Spalte 1 der Merkmalsdatei ist die Transaktions-ID, Spalte 2 der Zeitschritt, alle weiteren Spalten sind Merkmale. Der Lader erwartet davon 165 und geht davon aus, dass die letzten 72 die über die Nachbarn aggregierten Merkmale sind (Umsetzungsdokument 3.4: 94 lokal, 72 aggregiert; der Zeitschritt zählt dort zu den 94 lokalen). Die ersten 93 heißen `f_001` bis `f_093` und bilden den Merkmalssatz `local`, die letzten 72 heißen `a_001` bis `a_072` und gehen in keine Baseline ein; sonst sähen die „robusten Z-Scores (Einzelmerkmale)“ Nachbarschaftsinformation. Hat die Datei eine andere Spaltenzahl, bricht der Lader mit einer Meldung ab, weil die Trennung dann nicht geprüft ist. Die gezählten Zahlen erscheinen nach `k3-train data --dataset elliptic` in der Ausgabe („Merkmale (gezählt)“ mit lokal und aggregiert) und stehen in `<Datenordner>/processed/elliptic/meta.json` (`featureColumns`, `aggregatedColumns`, `notes`). Die Annahme zur Spaltenfolge ist nur an einer erfundenen Fixture getestet. Gezählte Zahl nach dem ersten Lauf: [Platzhalter: noch nicht gezählt].
+Wie der Lader die Merkmale zählt und benennt (`load_elliptic` in `services/k3-train/src/k3_train/load.py`): Spalte 1 der Merkmalsdatei ist die Transaktions-ID, Spalte 2 der Zeitschritt, alle weiteren Spalten sind Merkmale. Der Lader erwartet davon 165 und geht davon aus, dass die letzten 72 die über die Nachbarn aggregierten Merkmale sind (Weber et al. 2019: 94 lokal, 72 aggregiert; der Zeitschritt zählt dort zu den 94 lokalen). Die ersten 93 heißen `f_001` bis `f_093` und bilden den Merkmalssatz `local`, die letzten 72 heißen `a_001` bis `a_072` und gehen in keine Baseline ein; sonst sähen die „robusten Z-Scores (Einzelmerkmale)“ Nachbarschaftsinformation. Hat die Datei eine andere Spaltenzahl, bricht der Lader mit einer Meldung ab, weil die Trennung dann nicht geprüft ist. Die gezählten Zahlen erscheinen nach `k3-train data --dataset elliptic` in der Ausgabe („Merkmale (gezählt)“ mit lokal und aggregiert) und stehen in `<Datenordner>/processed/elliptic/meta.json` (`featureColumns`, `aggregatedColumns`, `notes`). Die Annahme zur Spaltenfolge ist nur an einer erfundenen Fixture getestet. Gezählte Zahl nach dem ersten Lauf: [Platzhalter: noch nicht gezählt].
 
 Bezug:
 
-1. Kaggle-Konto anlegen (Dennis), Datensatz `ellipticco/elliptic-data-set` im Browser oder per Kaggle-CLI herunterladen.
+1. Kaggle-Konto nötig (für die Läufe dieses Projekts das Konto des Autors), Datensatz `ellipticco/elliptic-data-set` im Browser oder per Kaggle-CLI herunterladen.
 2. Die drei CSV-Dateien direkt in den Zielordner legen, gegebenenfalls aus einem Unterordner des Archivs herausnehmen. Der Lader erwartet genau diese Namen:
    - `elliptic_txs_features.csv`: ohne Kopfzeile, Transaktions-ID, Zeitschritt, Merkmale
    - `elliptic_txs_classes.csv`: Transaktions-ID und Klasse (`1` = illicit, `2` = licit, `unknown`)
    - `elliptic_txs_edgelist.csv`: Kantenliste aus zwei Transaktions-IDs
-3. Zielordner: `<Datenordner>/raw/elliptic/` mit einem Datenordner außerhalb von OneDrive, siehe unten. Ohne Datenordner gilt `services/k3-train/data/raw/elliptic/`.
+3. Zielordner: `<Datenordner>/raw/elliptic/` mit einem Datenordner außerhalb synchronisierter Ordner, siehe unten. Ohne Datenordner gilt `services/k3-train/data/raw/elliptic/`.
 4. `uv run k3-train data --dataset elliptic --data-dir <Datenordner>`; fehlt eine Datei, nennt der Befehl sie und endet mit Exit 2.
 5. `uv run k3-train baseline --dataset elliptic --data-dir <Datenordner>`. Split laut `split.py`: Training 1 bis 34 (Validierung 30 bis 34), Test 35 bis 49. Für Zeitschritte mit mehr als 5.000 Knoten wird die Betweenness mit 1.000 gezogenen Quellknoten geschätzt (Seed 42).
 
-Lizenz: CC BY-NC-ND 4.0, also nur nicht-kommerziell und keine Weitergabe bearbeiteter Fassungen. Das Portfolio ist nicht-kommerziell; die ND-Klausel wird eingehalten, indem aus dem Datensatz nichts veröffentlicht oder weitergegeben wird. Lokal sollen Roh- und aufbereitete Daten außerhalb von OneDrive liegen, siehe „Ablage außerhalb von OneDrive“. Die Hugging-Face-Spiegelung `yhoma/elliptic-bitcoin-dataset` nennt MIT. Das widerspricht der offiziellen Angabe; es gilt die restriktivere Lizenz, und die Spiegelung wird nicht als Quelle genutzt. Bei Nutzung wird die Originalquelle genannt (Weber et al. 2019, arXiv:1908.02591).
+Lizenz: CC BY-NC-ND 4.0, also nur nicht-kommerziell und keine Weitergabe bearbeiteter Fassungen. Das Portfolio ist nicht-kommerziell; die ND-Klausel wird eingehalten, indem aus dem Datensatz nichts veröffentlicht oder weitergegeben wird. Lokal sollen Roh- und aufbereitete Daten außerhalb synchronisierter Ordner liegen, siehe „Ablage außerhalb synchronisierter Ordner“. Die Hugging-Face-Spiegelung `yhoma/elliptic-bitcoin-dataset` nennt MIT. Das widerspricht der offiziellen Angabe; es gilt die restriktivere Lizenz, und die Spiegelung wird nicht als Quelle genutzt. Bei Nutzung wird die Originalquelle genannt (Weber et al. 2019, arXiv:1908.02591).
 
 Laufzeit eines Elliptic-Volllaufs: [Platzhalter: noch nicht gemessen].
 
@@ -133,13 +133,13 @@ Laufzeit eines Elliptic-Volllaufs: [Platzhalter: noch nicht gemessen].
 
 - Synthetische Transaktionsdaten, CSV mit einem Laundering-Tag je Transaktion. Bezug über Kaggle `ealtman2019/ibm-transactions-for-anti-money-laundering-aml`; das GitHub-Repo IBM/AML-Data steht unter Apache-2.0, die Daten unter CDLA-Sharing-1.0. Teilen ist unter gleichen Bedingungen erlaubt.
 - Zielordner für den künftigen Lader: `<Datenordner>/raw/ibm-aml/`. Den Lader gibt es noch nicht, und `datasets.py` kennt `ibm-aml` noch nicht; `--dataset ibm-aml` wird abgelehnt.
-- Welche Dateivariante genutzt wird, legt die Datensatzentscheidung fest; der frühere README-Entwurf nannte die Variante „Small“. Dateinamen und Größen werden erst beim Bau des Laders aus den heruntergeladenen Dateien übernommen, nicht vorher geschätzt.
+- Welche Dateivariante genutzt wird, legt die Datensatzentscheidung fest. Dateinamen und Größen werden erst beim Bau des Laders aus den heruntergeladenen Dateien übernommen, nicht vorher geschätzt.
 - Methodische Lücke: Die Labels hängen an Transaktionen, also an Kanten zwischen Konten. NetzRadar klassifiziert Knoten. Die Optionen zur Abbildung stehen in `CLAUDE.md` unter „Offene Entscheidungen“.
-- Weitere Quellen laut Umsetzungsdokument 3.4: der AMLSim-Generator (GitHub IBM/AMLSim) und SAML-D (9.504.852 Transaktionen, davon etwa 0,1039 % verdächtig).
+- Weitere mögliche Quellen, bisher nicht geprüft: der AMLSim-Generator (GitHub IBM/AMLSim) und der synthetische Datensatz SAML-D. Größe und Anteil verdächtiger Transaktionen werden erst bei einer Nutzung aus der jeweiligen Originalquelle übernommen.
 
-## Ablage außerhalb von OneDrive
+## Ablage außerhalb synchronisierter Ordner
 
-Das Repository liegt in OneDrive. Die `.gitignore` hält Rohdaten nur aus Git heraus, nicht aus der OneDrive-Synchronisierung. Dateien unter `services/k3-train/data/` würden also in die Cloud gespiegelt. Für Elliptic ist das nicht gewünscht, für IBM-AML ebenfalls nicht nötig.
+Liegt das Repository in einem synchronisierten Ordner wie OneDrive, hält die `.gitignore` Rohdaten nur aus Git heraus, nicht aus der Synchronisierung. Dateien unter `services/k3-train/data/` würden dann in die Cloud gespiegelt. Für Elliptic ist das nicht gewünscht, für IBM-AML ebenfalls nicht nötig.
 
 - Einen Datenordner außerhalb wählen, zum Beispiel neben der venv, und die Rohdaten nach `<Datenordner>/raw/elliptic/` legen:
 
@@ -150,7 +150,7 @@ Das Repository liegt in OneDrive. Die `.gitignore` hält Rohdaten nur aus Git he
   uv run k3-train baseline --dataset elliptic
   ```
 
-- Statt der Umgebungsvariablen geht bei `data`, `baseline` und `export` die Option `--data-dir <Datenordner>`; sie hat Vorrang vor `K3_DATA_DIR`. Mit make: `make data DATASET=elliptic DATA_DIR=<Datenordner>`, ebenso bei `make baseline`. Liegen die Rohdaten woanders, nimmt `data` sie per `--raw-dir <Ordner>` (make: `RAW_DIR=<Ordner>`).
+- Statt der Umgebungsvariablen geht bei `data`, `baseline`, `gnn` und `export` die Option `--data-dir <Datenordner>`; sie hat Vorrang vor `K3_DATA_DIR`. Mit make: `make data DATASET=elliptic DATA_DIR=<Datenordner>`, ebenso bei `make baseline`. Liegen die Rohdaten woanders, nimmt `data` sie per `--raw-dir <Ordner>` (make: `RAW_DIR=<Ordner>`).
 - Mit gesetztem Datenordner landen Rohdaten, aufbereitete Dateien (`processed/elliptic/`: `nodes.csv` mit allen Merkmalen, `edges.csv`, `meta.json`, Baseline-Scores in `scores.csv`, Graphmaße in `measures.csv`, GNN-Ergebnisse in `gnn.json` und `gnn_scores.csv`) und die Elliptic-Laufprotokolle aller Verfahren einschließlich `gcn`, `graphsage` und `mlp` (`processed/elliptic/runs/`) dort und nicht im Repo-Ordner. Ein Test prüft, dass `data --data-dir` nichts unter `services/k3-train/data/` anlegt.
 - Für die GNN auf Elliptic: `uv run --extra gnn k3-train gnn --dataset elliptic --data-dir <Datenordner>` nach `baseline`. Eingabe sind nur die 93 lokalen Merkmale `f_*`, wahlweise mit den 4 Graphmaßen; die 72 aggregierten `a_*` bleiben außen vor, damit der Vergleich mit und ohne Nachbarschaft sauber bleibt. Bisher nicht gelaufen.
 - `export` und `verify` schreiben bzw. lesen weiterhin nur `data/k3/` und `docs/runs/` im Repository; der Export von Elliptic bleibt gesperrt.

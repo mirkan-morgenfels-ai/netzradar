@@ -6,7 +6,7 @@ export default function ErrorPage({ reset }: { error: Error & { digest?: string 
   return (
     <section className="mx-auto flex max-w-2xl flex-col justify-center gap-4 py-16">
       <p className="text-xs uppercase tracking-[0.2em] text-wine">Fehler</p>
-      <h1 className="font-serif text-3xl">Etwas ist schiefgelaufen</h1>
+      <h1 className="font-serif text-3xl hyphens-auto break-words">Etwas ist schiefgelaufen</h1>
       <p className="text-stone">
         Die Seite konnte nicht dargestellt werden. Bitte versuchen Sie es erneut oder kehren Sie zur Startseite zurück.
       </p>

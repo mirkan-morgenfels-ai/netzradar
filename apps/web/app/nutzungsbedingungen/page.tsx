@@ -1,8 +1,16 @@
 import type { Metadata } from "next";
 import { OPERATOR } from "@portfolio/legal";
+import { ExternalLink } from "@/components/ExternalLink";
 import { LegalPage, LegalSection } from "@/components/LegalPage";
+import { pageMetadata } from "@/lib/metadata";
+import { LICENSE_URL, REPO_URL } from "@/lib/site";
 
-export const metadata: Metadata = { title: "Nutzungsbedingungen" };
+export const metadata: Metadata = pageMetadata({
+  title: "Nutzungsbedingungen",
+  description:
+    "Nutzungsbedingungen von NetzRadar: Methodenstudie ohne Beratung, keine Gewähr für Ergebnisse, Lizenzen der Datensätze und des Quellcodes.",
+  path: "/nutzungsbedingungen",
+});
 
 export default function NutzungsbedingungenPage() {
   return (
@@ -58,7 +66,8 @@ export default function NutzungsbedingungenPage() {
       <LegalSection title="6. Datensätze und Lizenzen">
         <p>
           Verwendet beziehungsweise vorgesehen sind die folgenden Datensätze. Sie unterliegen ihren eigenen Lizenzen und
-          sind nicht Teil des Quellcodes. Rohdaten werden weder im Repository noch auf dieser Seite veröffentlicht.
+          sind nicht Teil des Quellcodes. Ausgenommen sind die Exporte des eigenen synthetischen Netzes in data/k3/
+          (MIT-Lizenz). Rohdaten werden weder im Repository noch auf dieser Seite veröffentlicht.
         </p>
         <ul className="list-disc space-y-2 pl-6">
           <li>
@@ -84,7 +93,9 @@ export default function NutzungsbedingungenPage() {
 
       <LegalSection title="7. Quellcode und Lizenz">
         <p>
-          Der Quellcode steht unter der MIT-Lizenz zur Verfügung. Die Lizenz enthält einen eigenen Haftungs- und
+          Der Quellcode ist öffentlich unter{" "}
+          <ExternalLink href={REPO_URL}>github.com/mirkan-morgenfels-ai/netzradar</ExternalLink> verfügbar und steht unter
+          der <ExternalLink href={LICENSE_URL}>MIT-Lizenz</ExternalLink>. Die Lizenz enthält einen eigenen Haftungs- und
           Gewährleistungsausschluss, der für die Nutzung des Quellcodes gilt.
         </p>
       </LegalSection>

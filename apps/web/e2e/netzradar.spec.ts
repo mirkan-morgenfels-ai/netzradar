@@ -4,7 +4,9 @@ import { expect, test, type Page } from "@playwright/test";
 
 interface ExportedRun {
   method: string;
+  featureSet: string;
   prAuc: number;
+  date: string;
 }
 
 interface AxeViolation {
@@ -33,8 +35,14 @@ const MARGIN = METRICS.evaluation.randomPrAucQ95 - METRICS.evaluation.randomPrAu
 const AXE_SOURCE = readFileSync(require.resolve("axe-core/axe.min.js"), "utf8");
 const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"];
 const AXE_WIDTHS = [390, 768, 1280];
-const SHORT_NAME: Record<string, string> = { zscore: "Z-Scores", iforest: "Isolation Forest", gcn: "GCN", graphsage: "GraphSAGE", mlp: "MLP" };
-const NEIGHBOURHOOD_SHARE = "der größere Teil des Vorsprungs der Graph Neural Networks damit aus der Nachbarschaft";
+const SHORT_NAME: Record<string, string> = {
+  zscore: "Z-Scores",
+  iforest: "Isolation Forest",
+  gcn: "GCN",
+  graphsage: "GraphSAGE",
+  mlp: "MLP (ohne Kanten)",
+};
+const NEIGHBOURHOOD_SHARE = "der größere Teil des Vorsprungs der Graph Neural Networks aus der Nachbarschaft";
 const INK = "rgb(17, 17, 17)";
 const NODES = JSON.parse(readFileSync(path.join(DATA_DIR, "nodes.json"), "utf8")) as {
   scoreGnnMethod: "gcn" | "graphsage" | null;
@@ -43,10 +51,24 @@ const NODES = JSON.parse(readFileSync(path.join(DATA_DIR, "nodes.json"), "utf8")
 const FIRST_SEED = NODES.nodes.find((node) => node.seedRank === 1);
 const STEP_4_METHODS = ["gcn", "graphsage", "mlp"];
 const GNN_LABEL = { gcn: "GCN", graphsage: "GraphSAGE" } as const;
-const PENDING_TEXT = "Schritt 4, noch nicht gemessen";
+const PENDING_TEXT = "noch nicht gemessen";
 
 function germanDecimal(value: number): string {
-  return value.toFixed(4).replace(".", ",");
+  return value.toFixed(4).replace(".", ",").replace(/^-/, "\u2212");
+}
+
+function germanPercent(value: number, digits: number): string {
+  return `${(value * 100).toFixed(digits).replace(".", ",")}\u00a0%`;
+}
+
+function germanDate(iso: string): string {
+  const [year, month, day] = iso.slice(0, 10).split("-");
+  return `${day}.${month}.${year}`;
+}
+
+function germanList(items: string[]): string {
+  if (items.length <= 1) return items.join("");
+  return `${items.slice(0, -1).join(", ")} und ${items[items.length - 1]}`;
 }
 
 function runOf(method: string): ExportedRun | undefined {
@@ -114,6 +136,9 @@ test("NetzRadar page renders headline, metrics, graph and node details without l
     germanDecimal(METRICS.evaluation.randomPrAucExpected),
   );
   await expect(page.getByTestId("metrics-row-prevalence")).toContainText(germanDecimal(METRICS.evaluation.prevalence));
+  await expect(page.getByTestId("assessment")).toContainText(
+    `(Prävalenz im Test: ${germanPercent(METRICS.evaluation.prevalence, 2)})`,
+  );
   for (const method of STEP_4_METHODS) {
     const row = page.getByTestId(`metrics-row-${method}`);
     if (METRICS.runs.some((run) => run.method === method)) {
@@ -161,7 +186,7 @@ test("NetzRadar page renders headline, metrics, graph and node details without l
   await expect(page.getByTestId("node-detail")).toContainText("1 von");
   await expect(firstRow).toHaveAttribute("aria-current", "true");
   if (NODES.scoreGnnMethod === null) {
-    await expect(page.getByTestId("node-detail")).toContainText("Schritt 4, noch nicht berechnet");
+    await expect(page.getByTestId("node-detail")).toContainText("noch nicht berechnet");
   } else {
     await expect(page.getByTestId("node-detail")).toContainText(`Score GNN (${GNN_LABEL[NODES.scoreGnnMethod]})`);
     await expect(page.getByTestId("node-detail-gnn")).toHaveText(germanDecimal(FIRST_SEED?.scoreGnn ?? Number.NaN));
@@ -200,6 +225,19 @@ test("assessment sentences follow the differences in metrics.json", async ({ pag
   const baselines = [zscore, iforest].filter((run): run is ExportedRun => run !== undefined);
   const baseline = baselines.reduce<ExportedRun | undefined>((best, run) => (!best || run.prAuc > best.prAuc ? run : best), undefined);
 
+  const below = METRICS.runs
+    .filter((run) => run.prAuc <= METRICS.evaluation.randomPrAucQ95)
+    .map((run) => SHORT_NAME[run.method] ?? run.method);
+  const random = page.getByTestId("random-comparison");
+  if (below.length === 0) {
+    await expect(random).toContainText("Alle Verfahren liegen über dem 95-%-Quantil zufälliger Rangfolgen");
+  } else if (below.length < METRICS.runs.length) {
+    await expect(random).toContainText(`Alle Verfahren außer ${germanList(below)} liegen über dem 95-%-Quantil`);
+  } else {
+    await expect(random).toContainText("Kein Verfahren liegt über dem 95-%-Quantil");
+  }
+  await expect(random).toContainText(`(${germanDecimal(METRICS.evaluation.randomPrAucQ95)})`);
+
   if (zscore && iforest) {
     const difference = iforest.prAuc - zscore.prAuc;
     const pair = page.getByTestId("baseline-pair");
@@ -208,6 +246,17 @@ test("assessment sentences follow the differences in metrics.json", async ({ pag
       await expect(pair).toContainText(difference > 0 ? "über den robusten Z-Scores" : "unter den robusten Z-Scores");
     } else {
       await expect(pair).toContainText("nicht belastbar");
+    }
+  }
+
+  if (baseline && graphRuns.length > 0) {
+    const gap = page.getByTestId("gnn-vs-baseline");
+    await expect(gap).toContainText(`PR-AUC ${germanDecimal(baseline.prAuc)}`);
+    if (graphRuns.some((run) => run.featureSet !== baseline.featureSet)) {
+      await expect(gap).toContainText("Dieser Abstand mischt mehrere Effekte");
+      await expect(gap).toContainText(baseline.featureSet === "local" ? "zusätzlich die Graphmaße" : "keine Graphmaße");
+    } else {
+      await expect(gap).toContainText("Dieser Abstand mischt zwei Effekte");
     }
   }
 
@@ -268,9 +317,90 @@ for (const width of AXE_WIDTHS) {
 
 test("start page links to the NetzRadar page", async ({ page }) => {
   await page.goto("/");
-  const link = page.getByTestId("project-netzradar").getByRole("link");
+  const link = page.getByTestId("project-netzradar").getByRole("link", { name: /^Zum Projekt/ });
   await expect(link).toHaveAttribute("href", "/projects/netzradar");
   await link.click();
   await expect(page).toHaveURL(/\/projects\/netzradar$/);
   await expect(page.getByRole("heading", { level: 1, name: "NetzRadar" })).toBeVisible();
+});
+
+test("status names the run date and the page avoids internal jargon", async ({ page }) => {
+  await page.goto("/projects/netzradar");
+  const dates = [...new Set(METRICS.runs.map((run) => run.date))].sort();
+  const first = germanDate(dates[0] ?? "");
+  const last = germanDate(dates[dates.length - 1] ?? "");
+  const status = page.getByTestId("status-text");
+  await expect(status).toContainText(`Stand der Ergebnisse: ${first === last ? first : `${first} bis ${last}`}.`);
+  await expect(status).toContainText(
+    "Offen: Case-Study, Läufe mit gestörter Nachbarschaft, Baseline mit gemittelten Nachbarmerkmalen.",
+  );
+  await expect(status.getByRole("link", { name: "„Einordnung der Ergebnisse“" })).toHaveAttribute("href", "#einordnung");
+  const text = await page.getByRole("main").innerText();
+  expect(text).not.toMatch(/Schritt \d/);
+  expect(text).not.toMatch(/\b(il)?licit\b/i);
+  await expect(page.getByTestId("search-table")).toContainText("(Verhältnis aus den Labels)");
+  await expect(page.getByRole("main")).toContainText(
+    "Deutlich stärker weicht der größte Ausgangsanteil der Fan-out-Verteiler ab, und runde Beträge sind bei Musterknoten doppelt so häufig.",
+  );
+  await expect(page.getByRole("main")).toContainText(
+    "Fan-in-Sammler haben als Summe vieler Zubringer einen höheren Betrag und einen kleineren Variationskoeffizienten der Eingangsbeträge (die Beträge der Zubringer streuen weniger).",
+  );
+  await expect(page.getByRole("main")).not.toContainText("Einzelne Merkmale weichen stärker ab");
+});
+
+test("section links jump to the assessment and the limits", async ({ page }) => {
+  await page.goto("/projects/netzradar");
+  const nav = page.getByRole("navigation", { name: "Abschnitte" });
+  await expect(nav.getByRole("link")).toHaveText(["Daten", "Ergebnisse", "Methodik", "Einordnung", "Grenzen"]);
+  const targets = await nav
+    .getByRole("link")
+    .evaluateAll((links) => links.map((link) => link.getAttribute("href")?.slice(1) ?? ""));
+  const sectionOrder = await page
+    .locator("main section[id]")
+    .evaluateAll((sections) => sections.map((section) => section.id));
+  const positions = targets.map((id) => sectionOrder.indexOf(id));
+  expect(positions.every((position) => position >= 0)).toBe(true);
+  expect(positions).toEqual([...positions].sort((a, b) => a - b));
+
+  await page.getByRole("link", { name: "Zur Einordnung der Ergebnisse" }).click();
+  await expect(page).toHaveURL(/#einordnung$/);
+  await expect(page.getByRole("heading", { level: 2, name: "Einordnung der Ergebnisse" })).toBeInViewport();
+
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await nav.getByRole("link", { name: "Grenzen" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/#grenzen$/);
+  await expect(page.getByRole("heading", { level: 2, name: "Grenzen" })).toBeInViewport();
+});
+
+test("phone layout keeps the label table complete and the graph controls off the graph", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/projects/netzradar");
+  const region = page.getByRole("region", { name: "Labels im gesamten Netz" });
+  const size = await region.evaluate((element) => ({ scroll: element.scrollWidth, client: element.clientWidth }));
+  expect(size.scroll).toBeLessThanOrEqual(size.client);
+
+  await expect(page.getByTestId("graph-hint")).toContainText(
+    "auf Touch-Geräten mit zwei Fingern zoomen und verschieben. Außerhalb des Graphen scrollen Sie die Seite.",
+  );
+  await expect(page.getByTestId("graph-view")).toHaveAttribute("data-state", "ready", { timeout: 30_000 });
+  const canvas = await page.getByTestId("graph-canvas").boundingBox();
+  const controls = await page.getByTestId("graph-controls").boundingBox();
+  expect(canvas).not.toBeNull();
+  expect(controls).not.toBeNull();
+  expect(controls?.y ?? 0).toBeGreaterThanOrEqual((canvas?.y ?? 0) + (canvas?.height ?? 0));
+});
+
+test.describe("without JavaScript", () => {
+  test.use({ javaScriptEnabled: false });
+
+  test("the graph area explains that it needs JavaScript instead of loading forever", async ({ page }) => {
+    await page.goto("/projects/netzradar");
+    const notice = page.getByTestId("graph-noscript");
+    await expect(notice).toBeVisible();
+    await expect(notice).toHaveText("Die Graph-Ansicht braucht JavaScript; Kennzahlen und Tabellen stehen unten.");
+    await expect(page.getByTestId("graph-loading")).toHaveCount(0);
+    await expect(page.getByTestId("graph-view")).not.toContainText("Graph wird geladen");
+    await expect(page.getByTestId("metrics-table")).toBeVisible();
+  });
 });

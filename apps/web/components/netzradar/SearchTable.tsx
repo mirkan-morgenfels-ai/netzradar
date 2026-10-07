@@ -13,7 +13,7 @@ const NUMBER_CELL = cx(CELL, "text-right tabular-nums");
 
 function weightText(candidate: SearchCandidate): string {
   const value = formatPlainNumber(candidate.positiveWeight);
-  return candidate.positiveWeightRule === "fixed" ? `${value} (fest)` : `${value} (licit / illicit)`;
+  return candidate.positiveWeightRule === "fixed" ? `${value} (fest)` : `${value} (Verhältnis aus den Labels)`;
 }
 
 interface LearnedRun {

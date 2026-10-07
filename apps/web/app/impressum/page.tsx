@@ -1,9 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { OPERATOR } from "@portfolio/legal";
+import { ExternalLink } from "@/components/ExternalLink";
 import { LegalPage, LegalSection } from "@/components/LegalPage";
+import { pageMetadata } from "@/lib/metadata";
+import { LICENSE_URL, REPO_URL } from "@/lib/site";
 
-export const metadata: Metadata = { title: "Impressum" };
+export const metadata: Metadata = pageMetadata({
+  title: "Impressum",
+  description: "Impressum von NetzRadar: verantwortliche Person, Kontakt, Haftung für Inhalte und Links, Urheberrecht und Lizenz.",
+  path: "/impressum",
+});
 
 export default function ImpressumPage() {
   return (
@@ -50,9 +57,12 @@ export default function ImpressumPage() {
 
       <LegalSection title="Urheberrecht und Lizenz">
         <p>
-          Der Quellcode des Projekts steht unter der MIT-Lizenz. Texte und Gestaltung dieser Seite unterliegen dem deutschen
-          Urheberrecht. Die verwendeten Datensätze unterliegen ihren eigenen Lizenzen und sind nicht Teil des Quellcodes.
-          Genannte Marken und Produktnamen (etwa IBM, Elliptic, Kaggle) gehören ihren jeweiligen Inhabern; es besteht keine
+          Der Quellcode des Projekts ist öffentlich unter{" "}
+          <ExternalLink href={REPO_URL}>github.com/mirkan-morgenfels-ai/netzradar</ExternalLink> verfügbar und steht unter
+          der <ExternalLink href={LICENSE_URL}>MIT-Lizenz</ExternalLink>. Texte und Gestaltung dieser Seite unterliegen dem
+          deutschen Urheberrecht. Die verwendeten Datensätze unterliegen ihren eigenen Lizenzen und sind nicht Teil des
+          Quellcodes. Ausgenommen sind die Exporte des eigenen synthetischen Netzes in data/k3/ (MIT-Lizenz). Genannte
+          Marken und Produktnamen (etwa IBM, Elliptic, Kaggle) gehören ihren jeweiligen Inhabern; es besteht keine
           Verbindung zu diesen Unternehmen.
         </p>
       </LegalSection>

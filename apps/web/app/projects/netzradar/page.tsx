@@ -4,13 +4,16 @@ import type { ReactNode } from "react";
 import { PrCurveChart } from "@portfolio/charts";
 import { Disclaimer, PRIVACY_SHORT } from "@portfolio/legal";
 import { StatTile } from "@portfolio/ui";
+import { ExternalLink, PROSE_LINK_CLASS } from "@/components/ExternalLink";
 import { MetricsTable } from "@/components/netzradar/MetricsTable";
 import { NetzRadarExplorer } from "@/components/netzradar/NetzRadarExplorer";
 import { NodeSymbol } from "@/components/netzradar/NodeSymbol";
 import { ScrollRegion } from "@/components/netzradar/ScrollRegion";
 import { SearchTable } from "@/components/netzradar/SearchTable";
+import { pageMetadata } from "@/lib/metadata";
 import {
   accuracySentence,
+  baselineGapEffectsSentence,
   baselineSentence,
   caveatConclusion,
   caveatTitle,
@@ -19,12 +22,14 @@ import {
   graphLeadMeasured,
   homophilyLimitConclusion,
   pairSentence,
-  randomSentence,
+  randomComparisonSentence,
+  recallSentence,
 } from "@/lib/netzradar/assessment";
 import { curveSeries, prevalenceLevel } from "@/lib/netzradar/curves";
 import { netzRadarData } from "@/lib/netzradar/data";
 import {
   FEATURE_SET_TEXT,
+  formatDateRange,
   formatDecimal,
   formatInteger,
   formatIsoDate,
@@ -36,7 +41,6 @@ import {
   joinList,
   LABEL_TEXT,
   METHOD_SHORT_TEXT,
-  METHOD_TEXT,
 } from "@/lib/netzradar/format";
 import { countLabels, seedNodes, summarizeComponents } from "@/lib/netzradar/graph";
 import { CHAIN_LABELS, chainExample } from "@/lib/netzradar/messagePassing";
@@ -48,7 +52,6 @@ import {
   featureNames,
   findRun,
   finalTrainRatioWeight,
-  hitsAtRecall,
   illicitShareAmongLabelled,
   isGraphMethod,
   labelledTestCount,
@@ -57,24 +60,37 @@ import {
   numberParameter,
   parameterEntries,
   reachedEpochLimit,
+  runDateRange,
   searchWeight,
   zeroMadFeatures,
 } from "@/lib/netzradar/summary";
 import { NODE_LABELS, type FeatureSet, type Run, type Training } from "@/lib/netzradar/types";
+import { isRepoPath, PROJECTS, README_URL, REPO_URL, repoUrl, RUNS_URL } from "@/lib/site";
 
 const DESCRIPTION_METHODS = joinList(netzRadarData.metrics.runs.map((run) => METHOD_SHORT_TEXT[run.method]));
+const PROJECT = PROJECTS.find((project) => project.slug === "netzradar");
 
-export const metadata: Metadata = {
-  title: { absolute: "NetzRadar" },
+export const metadata: Metadata = pageMetadata({
+  title: "NetzRadar – Anomalie-Erkennung in Transaktionsnetzwerken",
+  absoluteTitle: true,
   description: `Fallstudie zur Anomalie-Erkennung in Transaktionsnetzwerken auf einem synthetischen Netz: ${DESCRIPTION_METHODS} im Vergleich, strikt zeitlicher Split, PR-AUC als Hauptmetrik. Alle Ergebnisse sind vorab berechnet.`,
-};
+  path: "/projects/netzradar",
+});
 
 const SECTION_TITLE = "font-serif text-2xl";
 const PROSE = "max-w-3xl space-y-3 leading-relaxed";
 const SUBTITLE = "pt-3 font-serif text-xl";
-const FEW_HITS_RECALL = 0.1;
 const EXAMPLE_NEIGHBOURS = 3;
 const MIXED_NEIGHBOUR_SHARE = 0.5;
+const ANCHOR_LINK_CLASS = "underline underline-offset-2 hover:text-gold-deep";
+
+const SECTION_LINKS: ReadonlyArray<{ id: string; label: string }> = [
+  { id: "datensatz", label: "Daten" },
+  { id: "metriken", label: "Ergebnisse" },
+  { id: "methodik", label: "Methodik" },
+  { id: "einordnung", label: "Einordnung" },
+  { id: "grenzen", label: "Grenzen" },
+];
 
 const FEATURE_SET_DATIVE: Record<FeatureSet, string> = {
   local: "nur lokalen Merkmalen",
@@ -83,7 +99,7 @@ const FEATURE_SET_DATIVE: Record<FeatureSet, string> = {
 
 function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
-    <section aria-labelledby={`${id}-title`} className="space-y-5 border-t border-line pt-10">
+    <section id={id} aria-labelledby={`${id}-title`} className="scroll-mt-6 space-y-5 border-t border-line pt-10">
       <h2 id={`${id}-title`} className={SECTION_TITLE}>
         {title}
       </h2>
@@ -120,27 +136,40 @@ function runHint(run: Run): string {
   return `${features}, mit Labels und Nachbarschaft`;
 }
 
-function statusText(runs: readonly Run[], datasetName: string): string {
-  const baselines = runs.filter((run) => run.training === null).map((run) => METHOD_TEXT[run.method]);
+function StatusText({ runs, datasetName }: { runs: readonly Run[]; datasetName: string }) {
+  const baselines = runs.filter((run) => run.training === null).map((run) => METHOD_SHORT_TEXT[run.method]);
   const graphs = runs.filter((run) => isGraphMethod(run.method)).map((run) => METHOD_SHORT_TEXT[run.method]);
   const parts = [
     baselines.length > 0 ? `die Baselines (${joinList(baselines)})` : null,
     graphs.length > 0 ? `die Graph Neural Networks ${joinList(graphs)}` : null,
     findRun(runs, "mlp") ? "als Kontrolle ein MLP ohne Kanten" : null,
   ].filter((part): part is string => part !== null);
-  return `Stand: Schritt 4 von 5. Gemessen sind ${joinList(parts)}, alle mit demselben zeitlichen Split und auf denselben Testknoten. Gemessen ist bisher nur auf dem Datensatz „${datasetName}“. Was die Zahlen tragen und was nicht, steht unter „Einordnung“ und „Grenzen“.`;
+  const range = runDateRange(runs);
+  const measured =
+    graphs.length > 0
+      ? `Gemessen sind ${joinList(parts)}, alle mit demselben zeitlichen Split und auf denselben Testknoten.`
+      : `Gemessen sind bisher nur ${joinList(parts)}. Die Graph Neural Networks GCN und GraphSAGE, also die Modelle mit Nachbarschaft, fehlen noch; die Fragestellung ist deshalb noch nicht beantwortet.`;
+  return (
+    <>
+      {range ? `Stand der Ergebnisse: ${formatDateRange(range)}. ` : ""}
+      {measured} Alle Messungen stammen aus dem Datensatz „{datasetName}“. Offen: Case-Study, Läufe mit gestörter
+      Nachbarschaft, Baseline mit gemittelten Nachbarmerkmalen. Was die Zahlen tragen und was nicht, steht unter{" "}
+      <a href="#einordnung" className={ANCHOR_LINK_CLASS}>
+        „Einordnung der Ergebnisse“
+      </a>{" "}
+      und{" "}
+      <a href="#grenzen" className={ANCHOR_LINK_CLASS}>
+        „Grenzen“
+      </a>
+      .
+    </>
+  );
 }
 
 function flaggedSentence(run: Run): string {
-  return `${METHOD_TEXT[run.method]} ${formatInteger(run.accuracyFlagged)}, davon ${formatInteger(
+  return `${METHOD_SHORT_TEXT[run.method]} ${formatInteger(run.accuracyFlagged)}, davon ${formatInteger(
     run.accuracyTruePositives,
   )} auffällig`;
-}
-
-function recallSentence(run: Run, positives: number): string {
-  if (run.recallAtPrecision50 === 0) return `${METHOD_TEXT[run.method]}: bei keiner Schwelle`;
-  const hits = hitsAtRecall(run.recallAtPrecision50, positives);
-  return `${METHOD_TEXT[run.method]}: Recall ${formatDecimal(run.recallAtPrecision50)}, also etwa ${formatInteger(hits)} von ${formatInteger(positives)} auffälligen Testknoten`;
 }
 
 function finalModelText(run: Run, training: Training): string {
@@ -209,7 +238,6 @@ export default function NetzRadarPage() {
   const madScale = zscore ? numberParameter(zscore.hyperparameters, "madScale") : null;
   const accuracyThresholds = [...new Set(runs.map((run) => run.accuracyThreshold))];
   const exportTime = formatIsoTimeUtc(metrics.generatedAt);
-  const maxRecallAtPrecision50 = Math.max(...runs.map((run) => run.recallAtPrecision50));
   const ratioWeight = searchWeight(runs, "trainRatio");
   const fixedWeight = searchWeight(runs, "fixed");
   const finalRatioWeight = finalTrainRatioWeight(runs);
@@ -224,40 +252,61 @@ export default function NetzRadarPage() {
   return (
     <div className="space-y-10">
       <section className="max-w-3xl">
-        <p className="text-xs uppercase tracking-widest text-gold-deep">Projekt K3</p>
+        <p className="text-xs uppercase tracking-widest text-gold-deep">{PROJECT?.kicker}</p>
         <h1 className="mt-2 font-serif text-4xl">NetzRadar</h1>
         <p className="mt-4 text-lg leading-relaxed">
           Fallstudie zur Anomalie-Erkennung in Transaktionsnetzwerken. Die Fragestellung: Wie viel gewinnt ein Modell,
-          das die Nachbarschaft einer Transaktion einbezieht, gegenüber einer Baseline auf Einzelmerkmalen, bei gleichem
-          Split und gleichen Metriken?
+          das die Nachbarschaft einer Transaktion einbezieht, gegenüber einer Baseline auf lokalen Merkmalen, bei
+          gleichem Split und gleichen Metriken?
         </p>
         <p className="mt-3 leading-relaxed" data-testid="status-text">
-          {hasGnnRun
-            ? statusText(runs, dataset.displayName)
-            : "Stand ist Schritt 3 von 5. Gemessen sind bisher nur die beiden Baselines. Die Graph Neural Networks GCN und GraphSAGE, also die Modelle mit Nachbarschaft, folgen in Schritt 4. Die Fragestellung ist deshalb noch nicht beantwortet."}
+          <StatusText runs={runs} datasetName={dataset.displayName} />
         </p>
         <p className="mt-3 text-sm text-stone">{PRIVACY_SHORT}</p>
+        <p className="mt-3 text-sm">
+          <ExternalLink href={REPO_URL} testId="project-repo-link">
+            Quellcode auf GitHub
+          </ExternalLink>
+        </p>
+        <nav aria-label="Abschnitte" className="mt-4" data-testid="section-nav">
+          <ul className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+            {SECTION_LINKS.map((link) => (
+              <li key={link.id}>
+                <a href={`#${link.id}`} className={PROSE_LINK_CLASS}>
+                  {link.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
       </section>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" data-testid="headline-figures">
-        {runs.map((run) => (
+      <div className="space-y-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" data-testid="headline-figures">
+          {runs.map((run) => (
+            <StatTile
+              key={run.method}
+              label={`PR-AUC ${METHOD_SHORT_TEXT[run.method]}`}
+              value={formatDecimal(run.prAuc)}
+              hint={runHint(run)}
+            />
+          ))}
           <StatTile
-            key={run.method}
-            label={`PR-AUC ${METHOD_TEXT[run.method]}`}
-            value={formatDecimal(run.prAuc)}
-            hint={runHint(run)}
+            label="Zufällige Rangfolge"
+            value={formatDecimal(evaluation.randomPrAucExpected)}
+            hint={`PR-AUC im Erwartungswert, 95 % bleiben unter ${formatDecimal(evaluation.randomPrAucQ95)}`}
           />
-        ))}
-        <StatTile
-          label="Zufällige Rangfolge"
-          value={formatDecimal(evaluation.randomPrAucExpected)}
-          hint={`PR-AUC im Erwartungswert, 95 % bleiben unter ${formatDecimal(evaluation.randomPrAucQ95)}`}
-        />
-        <StatTile
-          label="Testknoten mit Label"
-          value={formatInteger(labelled)}
-          hint={`davon ${formatInteger(evaluation.testPositives)} auffällig`}
-        />
+          <StatTile
+            label="Testknoten mit Label"
+            value={formatInteger(labelled)}
+            hint={`davon ${formatInteger(evaluation.testPositives)} auffällig`}
+          />
+        </div>
+        <p className="text-sm">
+          <a href="#einordnung" className={PROSE_LINK_CLASS}>
+            Zur Einordnung der Ergebnisse
+          </a>
+        </p>
       </div>
 
       <Section id="datensatz" title="Datensatz">
@@ -265,10 +314,17 @@ export default function NetzRadarPage() {
           <p>
             Die öffentliche Demo nutzt den Datensatz „{dataset.displayName}“ (Lizenz {dataset.license}), ein eigenes,
             frei veröffentlichbares Netz. Knoten sind Transaktionen, gerichtete Kanten der Geldfluss zwischen ihnen. Der
-            Generator (<code className="text-sm break-all">{dataset.source}</code>
+            Generator (
+            {isRepoPath(dataset.source) ? (
+              <ExternalLink href={repoUrl(dataset.source)} testId="generator-source-link">
+                <code className="text-sm break-all">{dataset.source}</code>
+              </ExternalLink>
+            ) : (
+              <code className="text-sm break-all">{dataset.source}</code>
+            )}
             {generatorSeed === null ? "" : `, Seed ${generatorSeed}`}) legt einen gutartigen Hintergrund nach
             Preferential Attachment an, in dem einzelne Knoten viele Kanten haben, und baut darin bekannte
-            Geldwäsche-Muster ein: Fan-in, Fan-out, Zyklen und Ketten.
+            Geldwäsche-Muster ein: Fan-in, Fan-out, Kreise und Ketten.
           </p>
         </div>
         <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" data-testid="dataset-figures">
@@ -285,7 +341,7 @@ export default function NetzRadarPage() {
           ))}
         </dl>
         <ScrollRegion labelledBy="label-table-caption" className="rounded-lg border border-line bg-surface">
-          <table className="w-full min-w-[24rem] text-sm" data-testid="label-table">
+          <table className="w-full min-w-[18rem] text-sm" data-testid="label-table">
             <caption id="label-table-caption" className="px-4 pt-4 pb-2 text-left text-xs text-stone">
               Labels im gesamten Netz
             </caption>
@@ -336,7 +392,7 @@ export default function NetzRadarPage() {
               : `, etwa wie stark sich die meisten lokalen Merkmale der Musterknoten verschieben (localShift = ${formatDecimal(
                   localShift,
                   1,
-                )} Standardabweichungen). Einzelne Merkmale weichen stärker ab: Fan-out-Verteiler beim größten Ausgangsanteil, Fan-in-Zubringer bei der geringeren Streuung ihrer Beträge, und runde Beträge sind bei Musterknoten doppelt so häufig.`}
+                )} Standardabweichungen). Deutlich stärker weicht der größte Ausgangsanteil der Fan-out-Verteiler ab, und runde Beträge sind bei Musterknoten doppelt so häufig. Fan-in-Sammler haben als Summe vieler Zubringer einen höheren Betrag und einen kleineren Variationskoeffizienten der Eingangsbeträge (die Beträge der Zubringer streuen weniger).`}
           </p>
           <p>
             Vorgesehen sind zwei weitere Datensätze: IBM Transactions for Anti-Money Laundering (synthetisch, Lizenz
@@ -385,9 +441,11 @@ export default function NetzRadarPage() {
               mit den höchsten GNN-Scores können deshalb fehlen.
             </p>
           ) : null}
-          <p>
-            Ziehen verschiebt den Ausschnitt, das Mausrad zoomt. Ein Klick auf einen Knoten hebt ihn und seine Nachbarn
-            hervor und zeigt die Werte im Detailfeld. Ohne Maus lässt sich jeder Startknoten über die Tabelle auswählen.
+          <p data-testid="graph-hint">
+            Ziehen verschiebt den Ausschnitt, das Mausrad zoomt; auf Touch-Geräten mit zwei Fingern zoomen und
+            verschieben. Außerhalb des Graphen scrollen Sie die Seite. Ein Klick auf einen Knoten hebt ihn und seine
+            Nachbarn hervor und zeigt die Werte im Detailfeld. Ohne Maus lässt sich jeder Startknoten über die Tabelle
+            auswählen.
           </p>
           <p>
             Von den {formatInteger(seeds.length)} Startknoten tragen {formatInteger(seedLabels.illicit)} das Label
@@ -500,7 +558,7 @@ export default function NetzRadarPage() {
             nicht aber die Merkmale seiner Nachbarn.
             {hasGnnRun
               ? " Genau das ergänzen die Graph Neural Networks im nächsten Abschnitt."
-              : " Genau das sollen die Graph Neural Networks in Schritt 4 ergänzen."}
+              : " Genau das sollen die Graph Neural Networks ergänzen."}
           </p>
         </div>
 
@@ -508,22 +566,21 @@ export default function NetzRadarPage() {
           <div className={PROSE} data-testid="method-gnn">
             <h3 className={SUBTITLE}>Graph Neural Networks: Message Passing</h3>
             <p>
-              Ein Graph Neural Network rechnet in Schichten. In Schicht k sammelt jeder Knoten v die Darstellungen h
-              seiner Nachbarn N(v) und seine eigene aus der vorigen Schicht, fasst sie mit einer Aggregation AGG zusammen,
-              etwa einem gewichteten Mittelwert, multipliziert mit gelernten Gewichten W und wendet eine Nichtlinearität σ
-              an:
+              Ein Graph Neural Network rechnet in Schichten. In Schicht k fasst jeder Knoten v die Darstellungen h seiner
+              Nachbarn N(v) aus der vorigen Schicht mit einer Aggregation AGG zusammen, etwa einer normierten Summe oder
+              einem Mittelwert. UPDATE verbindet das Ergebnis über gelernte Gewichte mit der eigenen Darstellung des
+              Knotens, danach folgt eine Nichtlinearität σ, in der letzten Schicht ohne σ:
             </p>
             <Formula label="Formel: Message Passing">
               h<sub>v</sub>
-              <sup>(k)</sup> = σ(W<sup>(k)</sup> · AGG({"{"}h<sub>u</sub>
-              <sup>(k−1)</sup> : u ∈ N(v){"}"} ∪ {"{"}h<sub>v</sub>
-              <sup>(k−1)</sup>
-              {"}"})), &nbsp; h<sub>v</sub>
+              <sup>(k)</sup> = σ(UPDATE(h<sub>v</sub>
+              <sup>(k−1)</sup>, AGG({"{"}h<sub>u</sub>
+              <sup>(k−1)</sup> : u ∈ N(v){"}"}))), &nbsp; h<sub>v</sub>
               <sup>(0)</sup> = x<sub>v</sub>
             </Formula>
             <p>
               Startwert sind die skalierten Merkmale x<sub>v</sub> des Knotens. Nach {graphTraining.layers} Schichten
-              hängt die Ausgabe eines Knotens von allen Knoten ab, die höchstens {graphTraining.layers} Kanten entfernt
+              hängt die Ausgabe eines Knotens nur von Knoten ab, die höchstens {graphTraining.layers} Kanten entfernt
               sind. {sameShape ? "Hier haben alle gelernten Verfahren" : `${METHOD_SHORT_TEXT[graphRuns[0]?.method ?? "gcn"]} hat`}{" "}
               {graphTraining.layers} Schichten mit {graphTraining.hidden} versteckten Einheiten, {activationText(graphTraining.activation)} und Dropout{" "}
               {formatPlainNumber(graphTraining.dropout)} nach der ersten Schicht und zwei Ausgaben, je eine für auffällig
@@ -706,8 +763,9 @@ export default function NetzRadarPage() {
             summiert über alle Schwellen n, mit Recall R<sub>n</sub> und Precision P<sub>n</sub>. Ein konstanter Score,
             der alle Knoten gleich bewertet, erreicht genau die Prävalenz, hier {formatDecimal(evaluation.prevalence)}.
             Eine zufällige Rangfolge liegt im Erwartungswert etwas darüber, bei{" "}
-            {formatDecimal(evaluation.randomPrAucExpected)}, weil die ersten Ränge mit großem Gewicht in die Summe
-            eingehen. Wie stark der Zufall streut, zeigen {formatInteger(evaluation.randomPermutations)} zufällige
+            {formatDecimal(evaluation.randomPrAucExpected)}, weil die Average Precision die Precision nur an den Rängen der
+            auffälligen Knoten mittelt und ein auffälliger Knoten auf Rang k sich selbst mitzählt; der Effekt ist bei
+            kleinem k am größten. Wie stark der Zufall streut, zeigen {formatInteger(evaluation.randomPermutations)} zufällige
             Rangfolgen der Testknoten (Seed {metrics.seed}): 95 % davon bleiben unter{" "}
             {formatDecimal(evaluation.randomPrAucQ95)}. Gegen diese Werte sind die Zeilen der Tabelle zu lesen.
           </p>
@@ -716,7 +774,7 @@ export default function NetzRadarPage() {
           {runs.map((run) => (
             <details key={run.method} className="rounded-lg border border-line bg-surface p-4 text-sm">
               <summary className="cursor-pointer font-medium">
-                Alle Hyperparameter: {run.displayName} (Lauf vom {formatIsoDate(run.date)}, Seed {run.seed})
+                Alle Hyperparameter: {METHOD_SHORT_TEXT[run.method]} (Lauf vom {formatIsoDate(run.date)}, Seed {run.seed})
               </summary>
               <ParameterList entries={parameterEntries(run.hyperparameters)} />
             </details>
@@ -726,9 +784,7 @@ export default function NetzRadarPage() {
 
       <Section id="einordnung" title="Einordnung der Ergebnisse">
         <ul className="max-w-3xl list-disc space-y-3 pl-5 leading-relaxed" data-testid="assessment">
-          {runs.map((run) => (
-            <li key={run.method}>{randomSentence(run, evaluation)}</li>
-          ))}
+          <li data-testid="random-comparison">{randomComparisonSentence(runs, evaluation)}</li>
           <li data-testid="comparison-margin">
             Als Mindestabstand für einen Vergleich zweier Verfahren gilt hier {formatDecimal(margin)}, der Abstand
             zwischen Erwartungswert und 95-%-Quantil zufälliger Rangfolgen. Das ist eine grobe Schwelle, kein Test: Sie
@@ -738,27 +794,22 @@ export default function NetzRadarPage() {
           {zscore && iforest ? <li data-testid="baseline-pair">{baselineSentence(zscore, iforest, margin)}</li> : null}
           {baseline && graphRuns.length > 0 ? (
             <li data-testid="gnn-vs-baseline">
-              Gegen die bessere Baseline ({METHOD_TEXT[baseline.method]}, PR-AUC {formatDecimal(baseline.prAuc)}):{" "}
-              {graphRuns.map((run) => compareItem(run, baseline, margin)).join("; ")}. Dieser Abstand mischt zwei
-              Effekte: Die Graph Neural Networks lernen aus Labels, die Baselines nicht, und sie sehen die Nachbarschaft.
+              Gegen die bessere Baseline ({METHOD_SHORT_TEXT[baseline.method]}, PR-AUC {formatDecimal(baseline.prAuc)}):{" "}
+              {graphRuns.map((run) => compareItem(run, baseline, margin)).join("; ")}.{" "}
+              {baselineGapEffectsSentence(graphRuns, baseline)}
             </li>
           ) : null}
           {gcn && graphsage ? <li data-testid="gcn-vs-graphsage">{pairSentence(gcn, graphsage, margin)}</li> : null}
           {mlp && baseline && graphRuns.length > 0 ? (
             <li data-testid="decomposition">{decompositionSentences(mlp, baseline, graphRuns, margin).join(" ")}</li>
           ) : null}
-          <li>
-            {maxRecallAtPrecision50 < FEW_HITS_RECALL
-              ? "Bei einer Precision von mindestens 0,5 finden die Verfahren kaum auffällige Knoten. "
-              : "Recall bei einer Precision von mindestens 0,5: "}
-            {runs.map((run) => recallSentence(run, evaluation.testPositives)).join("; ")}.
-          </li>
+          <li data-testid="recall-sentence">{recallSentence(runs, evaluation.testPositives)}</li>
           <li>{accuracySentence(runs, evaluation)}</li>
           <li>
             Unter den {formatInteger(seeds.length)} Startknoten mit den höchsten Isolation-Forest-Scores tragen{" "}
             {formatInteger(seedLabels.illicit + seedLabels.licit)} ein Label; davon sind{" "}
             {formatPercent(illicitShareAmongLabelled(seedLabels))} auffällig (Prävalenz im Test:{" "}
-            {formatPercent(evaluation.prevalence)}). Die Startknoten haben im Mittel einen Gesamtgrad von{" "}
+            {formatPercent(evaluation.prevalence, 2)}). Die Startknoten haben im Mittel einen Gesamtgrad von{" "}
             {formatDecimal(meanDegree(seeds), 1)}, die übrigen Knoten des Ausschnitts von{" "}
             {formatDecimal(meanDegree(others), 1)}.
             {meanDegree(seeds) > meanDegree(others)
@@ -767,9 +818,9 @@ export default function NetzRadarPage() {
           </li>
           {best && !hasGnnRun ? (
             <li>
-              Offen ist, ob ein Modell mit Nachbarschaft besser abschneidet. Das misst Schritt 4 mit demselben Split,
-              denselben Testknoten und denselben Metriken. Maßstab ist die bessere Baseline: {best.displayName} mit
-              PR-AUC {formatDecimal(best.prAuc)}.
+              Offen ist, ob ein Modell mit Nachbarschaft besser abschneidet. Gemessen wird das mit demselben Split,
+              denselben Testknoten und denselben Metriken. Maßstab ist die bessere Baseline: {METHOD_SHORT_TEXT[best.method]}{" "}
+              mit PR-AUC {formatDecimal(best.prAuc)}.
             </li>
           ) : null}
         </ul>
@@ -813,15 +864,26 @@ export default function NetzRadarPage() {
       <Section id="grenzen" title="Grenzen">
         <ul className="max-w-3xl list-disc space-y-3 pl-5 leading-relaxed">
           <li data-testid="synthetic-limit">
-            Synthetische Daten: Alle Ergebnisse{hasGnnRun ? ", auch die der Graph Neural Networks aus Schritt 4," : ""}{" "}
+            Synthetische Daten: Alle Ergebnisse{hasGnnRun ? ", auch die der Graph Neural Networks," : ""}{" "}
             sind auf dem Datensatz „{dataset.displayName}“ gemessen. Sie beschreiben das Verhalten auf einem eigenen
             Generator und lassen sich nicht auf reale Transaktionsdaten übertragen.
           </li>
           <li>
             Ein Lauf je Verfahren: Alle Zahlen auf dieser Seite stammen aus Läufen mit Seed {metrics.seed}.
-            {learned.length > 0
-              ? " Für die gelernten Verfahren ist die Streuung über weitere Seeds in den Laufprotokollen festgehalten (README und docs/runs); die Seite zeigt sie nicht."
-              : ""}{" "}
+            {learned.length > 0 ? (
+              <>
+                {" "}
+                Für die gelernten Verfahren ist die Streuung über weitere Seeds in den Laufprotokollen festgehalten (
+                <ExternalLink href={README_URL} testId="limits-readme-link">
+                  README
+                </ExternalLink>{" "}
+                und{" "}
+                <ExternalLink href={RUNS_URL} testId="limits-runs-link">
+                  docs/runs
+                </ExternalLink>
+                ); die Seite zeigt sie nicht.
+              </>
+            ) : null}{" "}
             Konfidenzintervalle, etwa per Bootstrap über die Testknoten, sind nicht berechnet. Bei{" "}
             {formatInteger(evaluation.testPositives)} auffälligen Testknoten können kleine Unterschiede zufällig sein.
           </li>
@@ -850,7 +912,9 @@ export default function NetzRadarPage() {
             <li>
               Überwacht gegen unüberwacht: Die Baselines sehen keine Labels, die gelernten Verfahren schon.
               {mlp ? " Erst das MLP trennt die Wirkung der Labels von der der Nachbarschaft." : ""} Eine Baseline mit
-              gemittelten Nachbarmerkmalen ohne Labels fehlt noch.
+              gemittelten Nachbarmerkmalen ohne Labels fehlt noch. Ein starkes überwachtes Verfahren ohne Kanten (Random
+              Forest, Gradient Boosting) fehlt ebenfalls. Auf Elliptic lag bei Weber et al. (2019), gemessen mit dem
+              F1-Wert der auffälligen Klasse, ein Random Forest vor dem GCN.
             </li>
           ) : null}
           {firstTraining ? (
@@ -878,7 +942,7 @@ export default function NetzRadarPage() {
           </li>
           <li>Accuracy hängt von der gewählten Schwelle ab und ist deshalb nur Nebenwert.</li>
           {hasGnnRun ? null : (
-            <li>Die Graph Neural Networks fehlen noch (Schritt 4); bis dahin ist die Fragestellung offen.</li>
+            <li>Die Graph Neural Networks fehlen noch; bis dahin ist die Fragestellung offen.</li>
           )}
         </ul>
       </Section>
@@ -887,9 +951,12 @@ export default function NetzRadarPage() {
         <p className="max-w-3xl leading-relaxed" data-testid="data-status">
           Ergebnisse vom {formatIsoDate(metrics.generatedAt)}
           {exportTime ? ` (Export ${exportTime})` : ""}, Seed {metrics.seed}, Datensatz „{dataset.displayName}“. Jeder
-          Lauf ist mit Datensatz, Split, Seed, Hyperparametern und Datum protokolliert. Die Seite liest nur die vorab
-          exportierten Dateien nodes.json, edges.json und metrics.json. Im Browser läuft kein Modell, und es gehen
-          keine Anfragen an Dritte.
+          Lauf ist mit Datensatz, Split, Seed, Hyperparametern und Datum protokolliert (Laufprotokolle in{" "}
+          <ExternalLink href={RUNS_URL} testId="status-runs-link">
+            docs/runs
+          </ExternalLink>
+          ). Die Seite bindet beim Erstellen nur die vorab exportierten Dateien nodes.json, edges.json und
+          metrics.json ein. Im Browser läuft kein Modell, und es gehen keine Anfragen an Dritte.
         </p>
       </Section>
 

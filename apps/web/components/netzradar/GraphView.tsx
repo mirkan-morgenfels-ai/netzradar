@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type Sigma from "sigma";
 import type { CameraState } from "sigma/types";
 import { Button } from "@portfolio/ui";
@@ -46,6 +46,18 @@ function hasWebGl(): boolean {
   }
 }
 
+function subscribeNothing(): () => void {
+  return () => undefined;
+}
+
+function useIsClient(): boolean {
+  return useSyncExternalStore(
+    subscribeNothing,
+    () => true,
+    () => false,
+  );
+}
+
 function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
@@ -63,6 +75,7 @@ export function GraphView({ nodes, edges, adjacency, selectedId, onSelect, descr
   const selectedRef = useRef<string | null>(selectedId);
   const onSelectRef = useRef(onSelect);
   const [status, setStatus] = useState<Status>("loading");
+  const isClient = useIsClient();
 
   useEffect(() => {
     onSelectRef.current = onSelect;
@@ -181,33 +194,49 @@ export function GraphView({ nodes, edges, adjacency, selectedId, onSelect, descr
 
   return (
     <div className="relative" data-testid="graph-view" data-state={status}>
-      <div
-        ref={containerRef}
-        role="img"
-        aria-label={description}
-        data-testid="graph-canvas"
-        className="h-[360px] w-full overflow-hidden rounded-lg border border-line bg-surface sm:h-[520px]"
-      />
-      {status === "loading" ? (
-        <p className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-stone">
-          Graph wird geladen …
-        </p>
-      ) : null}
-      {unavailable ? (
+      <div className="relative">
         <div
-          role="status"
-          data-testid="graph-fallback"
-          className="absolute inset-0 flex items-center justify-center rounded-lg bg-paper p-6 text-center text-sm text-stone"
-        >
-          <p className="max-w-md">
-            {status === "unsupported"
-              ? "Ihr Browser stellt kein WebGL bereit. Die Graph-Ansicht ist deshalb ausgeblendet. Die Tabelle der Startknoten und das Detailfeld funktionieren weiterhin."
-              : "Die Graph-Ansicht konnte nicht geladen werden. Die Tabelle der Startknoten und das Detailfeld funktionieren weiterhin."}
+          ref={containerRef}
+          role="img"
+          aria-label={description}
+          data-testid="graph-canvas"
+          className="h-[360px] w-full overflow-hidden rounded-lg border border-line bg-surface sm:h-[520px]"
+        />
+        {isClient && status === "loading" ? (
+          <p
+            className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-stone"
+            data-testid="graph-loading"
+          >
+            Graph wird geladen …
           </p>
-        </div>
-      ) : null}
+        ) : null}
+        <noscript>
+          <p
+            className="absolute inset-0 flex items-center justify-center rounded-lg bg-paper p-6 text-center text-sm text-stone"
+            data-testid="graph-noscript"
+          >
+            Die Graph-Ansicht braucht JavaScript; Kennzahlen und Tabellen stehen unten.
+          </p>
+        </noscript>
+        {unavailable ? (
+          <div
+            role="status"
+            data-testid="graph-fallback"
+            className="absolute inset-0 flex items-center justify-center rounded-lg bg-paper p-6 text-center text-sm text-stone"
+          >
+            <p className="max-w-md">
+              {status === "unsupported"
+                ? "Ihr Browser stellt kein WebGL bereit. Die Graph-Ansicht ist deshalb ausgeblendet. Die Tabelle der Startknoten und das Detailfeld funktionieren weiterhin."
+                : "Die Graph-Ansicht konnte nicht geladen werden. Die Tabelle der Startknoten und das Detailfeld funktionieren weiterhin."}
+            </p>
+          </div>
+        ) : null}
+      </div>
       {status === "ready" ? (
-        <div className="absolute right-3 top-3 flex gap-2">
+        <div
+          className="mt-2 flex justify-end gap-2 sm:absolute sm:right-3 sm:top-3 sm:mt-0"
+          data-testid="graph-controls"
+        >
           <Button type="button" variant="secondary" onClick={() => zoom(ZOOM_STEP)}>
             <span aria-hidden="true">+</span>
             <span className="sr-only">Vergrößern</span>

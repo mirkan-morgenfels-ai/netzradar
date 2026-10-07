@@ -85,7 +85,7 @@ export function MetricsTable({ metrics }: { metrics: Metrics }) {
                     <span className="block text-xs text-stone">{METHOD_KIND_TEXT[row.method]}</span>
                   </th>
                   <td colSpan={4} className={cx(CELL, "text-stone")}>
-                    Schritt 4, noch nicht gemessen
+                    noch nicht gemessen
                   </td>
                 </tr>
               ),
