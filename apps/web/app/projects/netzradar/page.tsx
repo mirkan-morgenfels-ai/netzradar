@@ -35,6 +35,7 @@ import {
 import { curveSeries, METHOD_CURVE_STYLES, prevalenceLevel } from "@/lib/netzradar/curves";
 import { netzRadarData } from "@/lib/netzradar/data";
 import {
+  accuracyThresholdText,
   FEATURE_SET_TEXT,
   formatDateRange,
   formatDecimal,
@@ -114,6 +115,21 @@ const RUN_GRID: Record<number, string> = {
   4: "lg:grid-cols-4",
   5: "lg:grid-cols-5",
 };
+
+const TERMS: ReadonlyArray<[string, string]> = [
+  [
+    "Label",
+    `${LABEL_TEXT.illicit}, ${LABEL_TEXT.licit} oder ${LABEL_TEXT.unknown}. Das Label steht im Datensatz fest und ist der Maßstab, an dem die Verfahren gemessen werden; es ist keine rechtliche Bewertung realer Vorgänge.`,
+  ],
+  [
+    "Score",
+    "Ausgabe eines Verfahrens je Knoten. Ein hoher Score heißt: weit oben in der Rangfolge dieses Verfahrens. Der Score ist eine Einschätzung des Modells, kein Label.",
+  ],
+  [
+    "markiert",
+    "Knoten, deren Score eine gewählte Schwelle erreicht, etwa die obersten Test-Scores bei der Accuracy. Ob ein markierter Knoten das Label illegal trägt, zeigen Precision und Recall.",
+  ],
+];
 
 const FEATURE_SET_DATIVE: Record<FeatureSet, string> = {
   local: "nur lokalen Merkmalen",
@@ -320,7 +336,7 @@ function StatusText({ runs, datasetName }: { runs: readonly Run[]; datasetName: 
 function flaggedSentence(run: Run): string {
   return `${METHOD_SHORT_TEXT[run.method]} ${formatInteger(run.accuracyFlagged)}, davon ${formatInteger(
     run.accuracyTruePositives,
-  )} auffällig`;
+  )} mit Label illegal`;
 }
 
 function finalModelText(run: Run, training: Training): string {
@@ -391,7 +407,7 @@ export default function NetzRadarPage() {
   const trees = iforest ? numberParameter(iforest.hyperparameters, "nEstimators") : null;
   const contamination = iforest ? numberParameter(iforest.hyperparameters, "contamination") : null;
   const madScale = zscore ? numberParameter(zscore.hyperparameters, "madScale") : null;
-  const accuracyThresholds = [...new Set(runs.map((run) => run.accuracyThreshold))];
+  const accuracyThresholds = [...new Set(runs.map((run) => accuracyThresholdText(run.accuracyThreshold)))];
   const exportTime = formatIsoTimeUtc(metrics.generatedAt);
   const ratioWeight = searchWeight(runs, "trainRatio");
   const fixedWeight = searchWeight(runs, "fixed");
@@ -402,7 +418,9 @@ export default function NetzRadarPage() {
   const chainMeanB = chain.find((row) => row.key === "mean")?.values[1];
   const explorerDescription = `Netzwerk-Ausschnitt mit ${formatInteger(nodes.nodes.length)} Knoten und ${formatInteger(
     edges.edges.length,
-  )} Kanten. Dieselben Startknoten stehen als Text in der Tabelle unter der Grafik.`;
+  )} Kanten, Farbe und Form nach Label (${LABEL_TEXT.illicit}, ${LABEL_TEXT.licit}, ${
+    LABEL_TEXT.unknown
+  }). Dieselben Startknoten stehen als Text in der Tabelle unter der Grafik.`;
   const baselineCount = runs.filter((run) => run.training === null).length;
   const methodParts = [
     baselineCount > 0 ? countText(baselineCount, "Baseline", "Baselines") : null,
@@ -550,7 +568,7 @@ export default function NetzRadarPage() {
               variant="ledger"
               label="Testknoten mit Label"
               value={formatInteger(labelled)}
-              hint={`davon ${formatInteger(evaluation.testPositives)} auffällig`}
+              hint={`davon ${formatInteger(evaluation.testPositives)} mit Label illegal`}
             />
           </div>
           <div className="mt-6 flex flex-col gap-3 text-sm sm:flex-row sm:items-center sm:justify-between">
@@ -606,9 +624,9 @@ export default function NetzRadarPage() {
               {illicitVisibility !== null && licitVisibility !== null ? (
                 <p>
                   Wie bei realen Daten trägt nur ein Teil der Knoten ein Label. Im Generator erhält ein Musterknoten mit
-                  Wahrscheinlichkeit {formatPercent(illicitVisibility, 0)} das Label auffällig, ein gutartiger Knoten mit
-                  Wahrscheinlichkeit {formatPercent(licitVisibility, 0)} das Label unauffällig. Alle übrigen bleiben
-                  unbekannt; unter den unbekannten Knoten stecken also auch Musterknoten.
+                  Wahrscheinlichkeit {formatPercent(illicitVisibility, 0)} das Label illegal, ein gutartiger Knoten mit
+                  Wahrscheinlichkeit {formatPercent(licitVisibility, 0)} das Label legal. Alle übrigen bleiben ohne
+                  Label; unter den Knoten ohne Label stecken also auch Musterknoten.
                 </p>
               ) : null}
               <p>
@@ -626,6 +644,20 @@ export default function NetzRadarPage() {
                 den Methodenvergleich ausgewertet. Aus diesem Datensatz werden weder Rohdaten noch bearbeitete Fassungen
                 oder Ausschnitte veröffentlicht.
               </p>
+            </div>
+            <div className={cx("p-5 sm:p-6", CARD)} data-testid="terms">
+              <p className="eyebrow">Begriffe auf dieser Seite</p>
+              <dl className="mt-3 text-sm">
+                {TERMS.map(([term, text]) => (
+                  <div
+                    key={term}
+                    className="grid gap-1 border-t border-line py-3 first:border-t-0 first:pt-0 last:pb-0 sm:grid-cols-[6.5rem_1fr] sm:gap-4"
+                  >
+                    <dt className="font-medium text-ink">{term}</dt>
+                    <dd className="leading-relaxed text-slate">{text}</dd>
+                  </div>
+                ))}
+              </dl>
             </div>
             {dataset.generator ? (
               <Disclosure summary={`Alle ${parameterEntries(dataset.generator).length} Generator-Parameter`}>
@@ -733,8 +765,8 @@ export default function NetzRadarPage() {
           <div className="space-y-5 lg:col-span-5">
             <p className="text-[15px] leading-[1.75] text-ink sm:text-base">
               Von den {formatInteger(seeds.length)} Startknoten tragen {formatInteger(seedLabels.illicit)} das Label
-              auffällig, {formatInteger(seedLabels.licit)} das Label unauffällig und {formatInteger(seedLabels.unknown)}{" "}
-              kein Label.
+              illegal, {formatInteger(seedLabels.licit)} das Label legal und {formatInteger(seedLabels.unknown)} kein
+              Label.
             </p>
             <p className="border-l border-gold/60 pl-4 text-[13px] leading-relaxed text-slate" data-testid="graph-hint">
               Ziehen verschiebt den Ausschnitt, das Mausrad zoomt; auf Touch-Geräten mit zwei Fingern zoomen und
@@ -777,23 +809,23 @@ export default function NetzRadarPage() {
           <div className="bg-surface p-5 sm:p-6">
             <dt className="font-medium text-ink">Precision bei Recall ≥ 0,5</dt>
             <dd className="mt-1.5 leading-relaxed text-slate">
-              Höchste Precision über alle Schwellen, bei denen mindestens die Hälfte der auffälligen Testknoten gefunden
-              wird.
+              Höchste Precision über alle Schwellen, bei denen mindestens die Hälfte der Testknoten mit Label illegal
+              gefunden wird.
             </dd>
           </div>
           <div className="bg-surface p-5 sm:p-6">
             <dt className="font-medium text-ink">Recall bei Precision ≥ 0,5</dt>
             <dd className="mt-1.5 leading-relaxed text-slate">
-              Höchster Recall über alle Schwellen, bei denen mindestens jeder zweite markierte Knoten auffällig ist; 0,
-              wenn keine Schwelle das erreicht.
+              Höchster Recall über alle Schwellen, bei denen mindestens jeder zweite markierte Knoten das Label illegal
+              trägt; 0, wenn keine Schwelle das erreicht.
             </dd>
           </div>
           <div className="bg-surface p-5 sm:p-6">
             <dt className="font-medium text-ink">Accuracy (Nebenwert)</dt>
-            <dd className="mt-1.5 leading-relaxed text-slate">
+            <dd className="mt-1.5 leading-relaxed text-slate" data-testid="accuracy-definition">
               Schwelle: {accuracyThresholds.join("; ")}. Markierte Knoten: {runs.map(flaggedSentence).join("; ")}.
-              Zum Vergleich: Ein Modell, das alle Testknoten unauffällig nennt, erreicht{" "}
-              {formatDecimal(evaluation.allLicitAccuracy)}.
+              Richtig sind markierte Knoten mit Label illegal und nicht markierte mit Label legal. Zum Vergleich: Ein
+              Modell, das keinen Knoten markiert, erreicht {formatDecimal(evaluation.allLicitAccuracy)}.
             </dd>
           </div>
         </dl>
@@ -863,8 +895,9 @@ export default function NetzRadarPage() {
                 <p>
                   {trees === null ? "Ein Isolation Forest" : `${formatInteger(trees)} Bäume`} (scikit-learn, Seed{" "}
                   {metrics.seed}) auf den Trainingsknoten ohne Labels. Zufällige Schnitte isolieren einen Punkt; wird er im
-                  Mittel nach wenigen Schnitten isoliert, gilt er als auffällig. Der Score ist −score_samples, höher heißt
-                  auffälliger. Merkmale sind die {dataset.features} lokalen Merkmale und vier Graphmaße
+                  Mittel nach wenigen Schnitten isoliert, bekommt er einen hohen Score. Der Score ist −score_samples: je
+                  früher ein Punkt isoliert wird, desto höher. Merkmale sind die {dataset.features} lokalen Merkmale und
+                  vier Graphmaße
                   {contamination === null
                     ? "."
                     : `. Der Parameter contamination = ${formatDecimal(contamination, 2)} setzt nur die interne Schwelle von scikit-learn und ändert den Score nicht.`}
@@ -905,7 +938,8 @@ export default function NetzRadarPage() {
                         : `${METHOD_SHORT_TEXT[graphRuns[0]?.method ?? "gcn"]} hat`}{" "}
                       {graphTraining.layers} Schichten mit {graphTraining.hidden} versteckten Einheiten,{" "}
                       {activationText(graphTraining.activation)} und Dropout {formatPlainNumber(graphTraining.dropout)} nach der
-                      ersten Schicht und zwei Ausgaben, je eine für auffällig und unauffällig. Trainiert wird mit{" "}
+                      ersten Schicht und zwei Ausgaben, je eine für das Label illegal und das Label legal. Trainiert wird
+                      mit{" "}
                       {optimizerText(graphTraining.optimizer)} (Lernrate {formatPlainNumber(graphTraining.learningRate)}, Weight
                       Decay {formatPlainNumber(graphTraining.weightDecay)}) auf dem ganzen Graphen auf einmal; eine Epoche ist
                       genau ein Optimierungsschritt.
@@ -1002,15 +1036,16 @@ export default function NetzRadarPage() {
                     </MethodSection>
                   ) : null}
                   <MethodSection id="methodik-gewichtung" title="Klassengewichtung">
-                    <p>Auffällige Knoten sind selten. Trainiert wird deshalb mit gewichteter Kreuzentropie:</p>
+                    <p>Knoten mit Label illegal sind selten. Trainiert wird deshalb mit gewichteter Kreuzentropie:</p>
                     <Formula label="Formel: gewichtete Kreuzentropie">
                       L = Σ<sub>i ∈ ℒ</sub> w<sub>y(i)</sub> · (−log p<sub>i, y(i)</sub>) / Σ<sub>i ∈ ℒ</sub> w
-                      <sub>y(i)</sub>, &nbsp; w<sub>unauffällig</sub> = 1, &nbsp; w<sub>auffällig</sub> = w
+                      <sub>y(i)</sub>, &nbsp; w<sub>y(i)</sub> = 1 bei Label legal, w bei Label illegal
                     </Formula>
                     <p>
                       Die Summe läuft über die Knoten mit Label in der Verlustmenge ℒ; Knoten ohne Label und Testknoten gehen
                       nie in den Verlust ein. Weil durch die Summe der Gewichte geteilt wird, zählt nur das Verhältnis w.
-                      Standard ist w = Zahl der unauffälligen durch Zahl der auffälligen Knoten mit Label in der Verlustmenge;
+                      Standard ist w = Zahl der Knoten mit Label legal durch Zahl der Knoten mit Label illegal in der
+                      Verlustmenge;
                       dann tragen beide Klassen dasselbe Gesamtgewicht
                       {ratioWeight === null ? "" : `. In der Auswahl ergibt das w = ${formatPlainNumber(ratioWeight)}`}
                       {finalRatioWeight === null
@@ -1022,7 +1057,8 @@ export default function NetzRadarPage() {
                         : ` Als zweiter Kandidat läuft ein festes Gewicht w = ${formatPlainNumber(fixedWeight)} mit.`}{" "}
                       Das Gewicht verschiebt die vorhergesagten Chancen um den Faktor w, ändert im Optimum aber nicht die
                       Rangfolge der Knoten, und nur die Rangfolge zählt für die PR-AUC. Es wirkt über den Trainingsverlauf: wie
-                      stark die seltenen auffälligen Knoten die Gradienten bestimmen. Deshalb ist auch der GNN-Score keine
+                      stark die seltenen Knoten mit Label illegal die Gradienten bestimmen. Deshalb ist auch der GNN-Score
+                      keine
                       Wahrscheinlichkeit, sondern die Differenz der beiden Logits.
                     </p>
                   </MethodSection>
@@ -1105,11 +1141,11 @@ export default function NetzRadarPage() {
               Warum PR-AUC statt Accuracy
             </h3>
             <p>
-              Im Testzeitraum sind {formatInteger(evaluation.testPositives)} von {formatInteger(labelled)} Knoten mit
-              Label auffällig, also {formatPercent(evaluation.prevalence, 2)}. Ein Modell, das jeden Knoten unauffällig
-              nennt, erreicht damit eine Accuracy von {formatDecimal(evaluation.allLicitAccuracy)}, ohne einen einzigen
-              auffälligen Knoten zu finden. Die PR-AUC bewertet dagegen, wie weit oben die auffälligen Knoten in der
-              Rangfolge der Scores stehen:
+              Von den {formatInteger(labelled)} Testknoten mit Label tragen {formatInteger(evaluation.testPositives)} das
+              Label illegal, also {formatPercent(evaluation.prevalence, 2)}. Ein Modell, das keinen Knoten markiert,
+              erreicht damit eine Accuracy von {formatDecimal(evaluation.allLicitAccuracy)}, ohne einen einzigen Knoten
+              mit Label illegal zu finden. Die PR-AUC bewertet dagegen, wie weit oben die Knoten mit Label illegal
+              in der Rangfolge der Scores stehen:
             </p>
             <Formula label="Formel: Average Precision">
               AP = Σ<sub>n</sub> (R<sub>n</sub> − R<sub>n−1</sub>) · P<sub>n</sub>
@@ -1119,8 +1155,8 @@ export default function NetzRadarPage() {
               der alle Knoten gleich bewertet, erreicht genau die Prävalenz, hier {formatDecimal(evaluation.prevalence)}.
               Eine zufällige Rangfolge liegt im Erwartungswert etwas darüber, bei{" "}
               {formatDecimal(evaluation.randomPrAucExpected)}, weil die Average Precision die Precision nur an den Rängen
-              der auffälligen Knoten mittelt und ein auffälliger Knoten auf Rang k sich selbst mitzählt; der Effekt ist bei
-              kleinem k am größten. Wie stark der Zufall streut, zeigen {formatInteger(evaluation.randomPermutations)}{" "}
+              der Knoten mit Label illegal mittelt und ein solcher Knoten auf Rang k sich selbst mitzählt; der Effekt ist
+              bei kleinem k am größten. Wie stark der Zufall streut, zeigen {formatInteger(evaluation.randomPermutations)}{" "}
               zufällige Rangfolgen der Testknoten (Seed {metrics.seed}): 95 % davon bleiben unter{" "}
               {formatDecimal(evaluation.randomPrAucQ95)}. Gegen diese Werte sind die Zeilen der Tabelle zu lesen.
             </p>
@@ -1192,13 +1228,13 @@ export default function NetzRadarPage() {
             <li className={FINDING}>{accuracySentence(runs, evaluation)}</li>
             <li className={FINDING}>
               Unter den {formatInteger(seeds.length)} Startknoten mit den höchsten Isolation-Forest-Scores tragen{" "}
-              {formatInteger(seedLabels.illicit + seedLabels.licit)} ein Label; davon sind{" "}
-              {formatPercent(illicitShareAmongLabelled(seedLabels))} auffällig (Prävalenz im Test:{" "}
+              {formatInteger(seedLabels.illicit + seedLabels.licit)} ein Label; davon haben{" "}
+              {formatPercent(illicitShareAmongLabelled(seedLabels))} das Label illegal (Prävalenz im Test:{" "}
               {formatPercent(evaluation.prevalence, 2)}). Die Startknoten haben im Mittel einen Gesamtgrad von{" "}
               {formatDecimal(meanDegree(seeds), 1)}, die übrigen Knoten des Ausschnitts von{" "}
               {formatDecimal(meanDegree(others), 1)}.
               {meanDegree(seeds) > meanDegree(others)
-                ? " Der Isolation Forest stuft also vor allem Knoten mit vielen Kanten als auffällig ein, und solche Knoten gibt es auch im gutartigen Hintergrund. Das ist eine Lesart der exportierten Daten, kein eigener Test."
+                ? " Der Isolation Forest gibt also vor allem Knoten mit vielen Kanten einen hohen Score, und solche Knoten gibt es auch im gutartigen Hintergrund. Das ist eine Lesart der exportierten Daten, kein eigener Test."
                 : ""}
             </li>
             {best && !hasGnnRun ? (
@@ -1224,9 +1260,9 @@ export default function NetzRadarPage() {
                   Das Netz ist stark homophil, das heißt: Knoten hängen vor allem an Knoten mit demselben Label. Von den{" "}
                   {formatInteger(homophily.labelledEdges)} Kanten zwischen zwei Knoten mit Label verbinden{" "}
                   {formatInteger(sameLabelEdges)} gleiche Labels (Anteil {formatDecimal(homophily.sameLabelShare)}), nur{" "}
-                  {formatInteger(homophily.illicitLicitEdges)} einen auffälligen mit einem unauffälligen Knoten. Im
-                  Generator gehört ein auffälliger Knoten immer zu einem eingebauten Muster, und die Muster hängen fast nur
-                  an anderen Musterknoten. „Meine Nachbarn sehen aus wie Musterknoten“ ist hier fast dasselbe wie „ich bin
+                  {formatInteger(homophily.illicitLicitEdges)} einen Knoten mit Label illegal und einen mit Label legal. Im
+                  Generator gehört ein Knoten mit Label illegal immer zu einem eingebauten Muster, und die Muster hängen fast
+                  nur an anderen Musterknoten. „Meine Nachbarn sehen aus wie Musterknoten“ ist hier fast dasselbe wie „ich bin
                   ein Musterknoten“.
                 </p>
                 {localShift === null ? null : (
@@ -1275,10 +1311,11 @@ export default function NetzRadarPage() {
               </>
             ) : null}{" "}
             Konfidenzintervalle, etwa per Bootstrap über die Testknoten, sind nicht berechnet. Bei{" "}
-            {formatInteger(evaluation.testPositives)} auffälligen Testknoten können kleine Unterschiede zufällig sein.
+            {formatInteger(evaluation.testPositives)} Testknoten mit Label illegal können kleine Unterschiede zufällig
+            sein.
           </li>
           <li>
-            Nur Knoten mit Label werden bewertet. Unbekannte Knoten, darunter Musterknoten ohne Label, gehen nicht in die
+            Nur Knoten mit Label werden bewertet. Knoten ohne Label, darunter auch Musterknoten, gehen nicht in die
             Kennzahlen ein.
           </li>
           <li data-testid="homophily-limit">
@@ -1290,12 +1327,13 @@ export default function NetzRadarPage() {
                   2,
                 )})`}
             . Von den {formatInteger(homophily.labelledEdges)} Kanten zwischen zwei Knoten mit Label verbinden{" "}
-            {formatInteger(homophily.illicitIllicitEdges)} zwei auffällige, {formatInteger(homophily.licitLicitEdges)}{" "}
-            zwei unauffällige und nur {formatInteger(homophily.illicitLicitEdges)} einen auffälligen mit einem
-            unauffälligen Knoten. {formatInteger(homophily.illicitWithIllicitNeighbour)} von{" "}
-            {formatInteger(dataset.labelCounts.illicit)} auffälligen Knoten haben einen auffälligen Nachbarn, aber nur{" "}
-            {formatInteger(homophily.licitWithIllicitNeighbour)} von {formatInteger(dataset.labelCounts.licit)}{" "}
-            unauffälligen. Ein Modell, das die Nachbarschaft einbezieht, bekommt dieses Signal teilweise geschenkt.{" "}
+            {formatInteger(homophily.illicitIllicitEdges)} zwei Knoten mit Label illegal,{" "}
+            {formatInteger(homophily.licitLicitEdges)} zwei Knoten mit Label legal und nur{" "}
+            {formatInteger(homophily.illicitLicitEdges)} einen Knoten mit Label illegal und einen mit Label legal.{" "}
+            {formatInteger(homophily.illicitWithIllicitNeighbour)} von {formatInteger(dataset.labelCounts.illicit)} Knoten
+            mit Label illegal haben einen Nachbarn mit Label illegal, aber nur{" "}
+            {formatInteger(homophily.licitWithIllicitNeighbour)} von {formatInteger(dataset.labelCounts.licit)} Knoten mit
+            Label legal. Ein Modell, das die Nachbarschaft einbezieht, bekommt dieses Signal teilweise geschenkt.{" "}
             {homophilyLimitConclusion(leadMeasured)}
           </li>
           {learned.length > 0 ? (
@@ -1304,7 +1342,7 @@ export default function NetzRadarPage() {
               {mlp ? " Erst das MLP trennt die Wirkung der Labels von der der Nachbarschaft." : ""} Eine Baseline mit
               gemittelten Nachbarmerkmalen ohne Labels fehlt noch. Ein starkes überwachtes Verfahren ohne Kanten (Random
               Forest, Gradient Boosting) fehlt ebenfalls. Auf Elliptic lag bei Weber et al. (2019), gemessen mit dem
-              F1-Wert der auffälligen Klasse, ein Random Forest vor dem GCN.
+              F1-Wert für das Label illegal, ein Random Forest vor dem GCN.
             </li>
           ) : null}
           {firstTraining ? (

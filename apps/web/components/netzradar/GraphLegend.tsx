@@ -6,7 +6,7 @@ import { NodeSymbol } from "./NodeSymbol";
 const LABEL_ENTRIES: ReadonlyArray<{ label: NodeLabel; shape: string }> = [
   { label: "illicit", shape: "gefüllt, mit Goldring" },
   { label: "licit", shape: "gefüllt, ohne Ring" },
-  { label: "unknown", shape: "hohl, kein Label" },
+  { label: "unknown", shape: "hohl" },
 ];
 
 export function GraphLegend() {
@@ -15,7 +15,7 @@ export function GraphLegend() {
       className="rounded-2xl border border-line bg-surface px-5 py-4 text-sm shadow-card sm:px-6"
       data-testid="graph-legend"
     >
-      <h3 className="eyebrow">Legende: Label im Datensatz</h3>
+      <h3 className="eyebrow">Legende: Label im Datensatz (keine rechtliche Bewertung)</h3>
       <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
         <ul className="flex flex-wrap gap-x-6 gap-y-2.5">
           {LABEL_ENTRIES.map((entry) => (

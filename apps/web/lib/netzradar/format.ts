@@ -5,10 +5,23 @@ const MINUS_SIGN = "−";
 const ISO_PARTS_PATTERN = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/;
 
 export const LABEL_TEXT: Record<NodeLabel, string> = {
-  illicit: "auffällig",
-  licit: "unauffällig",
-  unknown: "unbekannt",
+  illicit: "illegal",
+  licit: "legal",
+  unknown: "ohne Label",
 };
+
+export const LABEL_PHRASE: Record<NodeLabel, string> = {
+  illicit: "Label illegal",
+  licit: "Label legal",
+  unknown: "ohne Label",
+};
+
+const EXPORTED_FLAG_TEXT = "als auffällig";
+const FLAG_TEXT = "als markiert";
+
+export function accuracyThresholdText(text: string): string {
+  return text.replaceAll(EXPORTED_FLAG_TEXT, FLAG_TEXT);
+}
 
 export const METHOD_TEXT: Record<Method, string> = {
   zscore: "Robuste Z-Scores",
