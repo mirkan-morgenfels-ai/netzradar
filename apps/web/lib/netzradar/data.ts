@@ -291,10 +291,10 @@ function parseDataset(value: unknown, path: string): DatasetInfo {
   }
   const homophily = parseHomophily(raw.homophily, `${path}.homophily`);
   if (homophily.illicitWithIllicitNeighbour > labelCounts.illicit) {
-    fail(`${path}.homophily.illicitWithIllicitNeighbour`, "mehr Knoten als auffällige Knoten im Netz");
+    fail(`${path}.homophily.illicitWithIllicitNeighbour`, "mehr Knoten als Knoten mit Label illegal im Netz");
   }
   if (homophily.licitWithIllicitNeighbour > labelCounts.licit) {
-    fail(`${path}.homophily.licitWithIllicitNeighbour`, "mehr Knoten als unauffällige Knoten im Netz");
+    fail(`${path}.homophily.licitWithIllicitNeighbour`, "mehr Knoten als Knoten mit Label legal im Netz");
   }
   return {
     name: readString(raw.name, `${path}.name`),
@@ -619,7 +619,7 @@ export function parseMetrics(value: unknown): Metrics {
       fail(`${path}.runs[${index}].accuracyFlagged`, "mehr markierte Knoten als Testknoten mit Label");
     }
     if (run.accuracyTruePositives > evaluation.testPositives) {
-      fail(`${path}.runs[${index}].accuracyTruePositives`, "mehr Treffer als auffällige Testknoten");
+      fail(`${path}.runs[${index}].accuracyTruePositives`, "mehr Treffer als Testknoten mit Label illegal");
     }
   });
   const dataset = parseDataset(raw.dataset, `${path}.dataset`);

@@ -15,14 +15,14 @@ export function randomComparisonSentence(runs: readonly Run[], evaluation: Evalu
   const expected = formatDecimal(evaluation.randomPrAucExpected);
   const below = runs.filter((run) => !beatsRandomRankings(run.prAuc, evaluation));
   if (below.length === 0) {
-    return `Alle Verfahren liegen über dem 95-%-Quantil zufälliger Rangfolgen (${quantile}) und ordnen auffällige Knoten damit besser als Zufall.`;
+    return `Alle Verfahren liegen über dem 95-%-Quantil zufälliger Rangfolgen (${quantile}) und ordnen Knoten mit Label illegal damit besser als Zufall.`;
   }
   const values = joinList(below.map((run) => `${METHOD_SHORT_TEXT[run.method]} (${formatDecimal(run.prAuc)})`));
   if (below.length === runs.length) {
     return `Kein Verfahren liegt über dem 95-%-Quantil zufälliger Rangfolgen (${quantile}). Bei ${values} ist die PR-AUC von der einer zufälligen Rangfolge (Erwartungswert ${expected}) nicht zu unterscheiden.`;
   }
   const names = joinList(below.map((run) => METHOD_SHORT_TEXT[run.method]));
-  return `Alle Verfahren außer ${names} liegen über dem 95-%-Quantil zufälliger Rangfolgen (${quantile}) und ordnen auffällige Knoten damit besser als Zufall. Bei ${values} ist die PR-AUC von der einer zufälligen Rangfolge (Erwartungswert ${expected}) nicht zu unterscheiden.`;
+  return `Alle Verfahren außer ${names} liegen über dem 95-%-Quantil zufälliger Rangfolgen (${quantile}) und ordnen Knoten mit Label illegal damit besser als Zufall. Bei ${values} ist die PR-AUC von der einer zufälligen Rangfolge (Erwartungswert ${expected}) nicht zu unterscheiden.`;
 }
 
 export function recallSentence(runs: readonly Run[], positives: number): string {
@@ -34,7 +34,7 @@ export function recallSentence(runs: readonly Run[], positives: number): string 
   });
   const fewHits = runs.every((run) => run.recallAtPrecision50 < FEW_HITS_RECALL);
   return `Recall bei Precision ≥ 0,5 – ${items.join("; ")}.${
-    fewHits ? " Bei dieser Precision finden die Verfahren kaum auffällige Knoten." : ""
+    fewHits ? " Bei dieser Precision finden die Verfahren kaum Knoten mit Label illegal." : ""
   }`;
 }
 
@@ -178,11 +178,11 @@ export function decompositionSentences(mlp: Run, baseline: Run, graphRuns: reado
 export function accuracySentence(runs: readonly Run[], evaluation: EvaluationInfo): string {
   const allLicit = formatDecimal(evaluation.allLicitAccuracy);
   if (runs.every((run) => run.accuracy < evaluation.allLicitAccuracy)) {
-    return `Bei der Accuracy liegen alle gemessenen Verfahren unter den ${allLicit} eines Modells, das alles unauffällig nennt. Deshalb ist Accuracy hier nur Nebenwert.`;
+    return `Bei der Accuracy liegen alle gemessenen Verfahren unter den ${allLicit} eines Modells, das keinen Knoten markiert. Deshalb ist Accuracy hier nur Nebenwert.`;
   }
   const range = `Die Accuracy liegt zwischen ${formatDecimal(Math.min(...runs.map((run) => run.accuracy)))} und ${formatDecimal(
     Math.max(...runs.map((run) => run.accuracy)),
-  )}; ein Modell, das alles unauffällig nennt, erreicht ${allLicit}.`;
+  )}; ein Modell, das keinen Knoten markiert, erreicht ${allLicit}.`;
   const groups = new Map<number, Run[]>();
   for (const run of runs) {
     if (run.accuracyTruePositives !== run.accuracyFlagged) continue;
@@ -192,11 +192,11 @@ export function accuracySentence(runs: readonly Run[], evaluation: EvaluationInf
     const best = bestAccuracyAtFlagged(flagged, evaluation);
     return `${joinList(group.map((run) => METHOD_SHORT_TEXT[run.method]))} ${
       group.length === 1 ? "markiert" : "markieren je"
-    } ${formatInteger(flagged)} Knoten, alle auffällig. Mehr als ${formatDecimal(best)} ist bei ${formatInteger(
+    } ${formatInteger(flagged)} Knoten, alle mit Label illegal. Mehr als ${formatDecimal(best)} ist bei ${formatInteger(
       flagged,
     )} markierten Knoten nicht möglich, und das sind nur ${formatDecimal(
       best - evaluation.allLicitAccuracy,
-    )} mehr als bei „alles unauffällig“.`;
+    )} mehr als bei „nichts markiert“.`;
   });
   return perfect.length === 0
     ? `${range} Deshalb ist Accuracy hier nur Nebenwert.`

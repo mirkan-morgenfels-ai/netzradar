@@ -22,6 +22,7 @@ interface AxeWindow {
 
 interface ExportedNode {
   id: string;
+  label: "illicit" | "licit" | "unknown";
   seedRank: number | null;
   scoreGnn: number | null;
 }
@@ -52,6 +53,7 @@ const FIRST_SEED = NODES.nodes.find((node) => node.seedRank === 1);
 const STEP_4_METHODS = ["gcn", "graphsage", "mlp"];
 const GNN_LABEL = { gcn: "GCN", graphsage: "GraphSAGE" } as const;
 const PENDING_TEXT = "noch nicht gemessen";
+const LABEL_PHRASE = { illicit: "Label illegal", licit: "Label legal", unknown: "ohne Label" } as const;
 
 function germanDecimal(value: number): string {
   return value.toFixed(4).replace(".", ",").replace(/^-/, "\u2212");
@@ -103,6 +105,36 @@ function watchErrors(page: Page): string[] {
 
 async function cspViolations(page: Page): Promise<string[]> {
   return page.evaluate(() => (window as unknown as { cspViolations?: string[] }).cspViolations ?? []);
+}
+
+async function completePageText(page: Page): Promise<string> {
+  await expect(page.getByTestId("graph-view")).toHaveAttribute("data-state", "ready", { timeout: 30_000 });
+  if (FIRST_SEED) {
+    await page.locator(`[data-testid="top-node-row"][data-node-id="${FIRST_SEED.id}"]`).click();
+    await expect(page.getByTestId("node-detail-id")).toHaveText(FIRST_SEED.id);
+    if (FIRST_SEED.scoreGnn !== null) await expect(page.getByTestId("node-detail-gnn")).toBeVisible();
+  }
+  const closed = page.locator("main details:not([open])");
+  await closed.evaluateAll((elements) => {
+    for (const element of elements) (element as HTMLDetailsElement).open = true;
+  });
+  await expect(closed).toHaveCount(0);
+  const visible = await page.getByRole("main").innerText();
+  const attributes = await page.evaluate(() =>
+    [...document.querySelectorAll("main [aria-label], main [alt], main [title], head title, head meta[content]")].map(
+      (element) =>
+        [
+          element.getAttribute("aria-label"),
+          element.getAttribute("alt"),
+          element.getAttribute("title"),
+          element.getAttribute("content"),
+          element.tagName === "TITLE" ? element.textContent : null,
+        ]
+          .filter((value): value is string => value !== null)
+          .join("\n"),
+    ),
+  );
+  return [visible, ...attributes].join("\n");
 }
 
 test.beforeEach(async ({ page }) => {
@@ -184,6 +216,7 @@ test("NetzRadar page renders headline, metrics, graph and node details without l
   }
   await firstRow.click();
   await expect(page.getByTestId("node-detail-id")).toHaveText(FIRST_SEED?.id ?? "");
+  await expect(page.getByTestId("node-detail-label")).toHaveText(LABEL_PHRASE[FIRST_SEED?.label ?? "unknown"]);
   await expect(page.getByTestId("node-detail")).toContainText("1 von");
   await expect(firstRow).toHaveAttribute("aria-current", "true");
   if (NODES.scoreGnnMethod === null) {
@@ -339,7 +372,7 @@ test("status names the run date and the page avoids internal jargon", async ({ p
     "Offen: Case-Study, Läufe mit gestörter Nachbarschaft, Baseline mit gemittelten Nachbarmerkmalen.",
   );
   await expect(status.getByRole("link", { name: "„Einordnung der Ergebnisse“" })).toHaveAttribute("href", "#einordnung");
-  const text = await page.getByRole("main").innerText();
+  const text = await completePageText(page);
   expect(text).not.toMatch(/Schritt \d/);
   expect(text).not.toMatch(/\b(il)?licit\b/i);
   await expect(page.getByTestId("search-table")).toContainText("(Verhältnis aus den Labels)");
@@ -350,6 +383,37 @@ test("status names the run date and the page avoids internal jargon", async ({ p
     "Fan-in-Sammler haben als Summe vieler Zubringer einen höheren Betrag und einen kleineren Variationskoeffizienten der Eingangsbeträge (die Beträge der Zubringer streuen weniger).",
   );
   await expect(page.getByRole("main")).not.toContainText("Einzelne Merkmale weichen stärker ab");
+});
+
+test("labels and scores keep separate terms", async ({ page }) => {
+  await page.goto("/projects/netzradar");
+  const text = await completePageText(page);
+  expect(text).toContain("Median und MAD reagieren kaum auf einzelne Ausreißer");
+  if (NODES.scoreGnnMethod !== null) {
+    expect(text).toContain("Logit für Label illegal minus Logit für Label legal");
+    expect(text).toContain("w bei Label illegal");
+  }
+  expect(text).not.toMatch(/auffällig/i);
+  expect(text).not.toMatch(/\bunbekannt\b/i);
+  expect(text).not.toMatch(/\bals (il)?legal\b|\balles (il)?legal\b|\bKlassen? (il)?legal\b|\bLogit (il)?legal\b|einstuf/);
+  await expect(page.getByTestId("graph-legend").locator("h3")).toHaveText(
+    "Legende: Label im Datensatz (keine rechtliche Bewertung)",
+  );
+  await expect(page.getByTestId("graph-legend").locator("li span.font-medium")).toHaveText([
+    "illegal",
+    "legal",
+    "ohne Label",
+  ]);
+  await expect(page.getByTestId("label-table").locator("tbody th")).toHaveText(["illegal", "legal", "ohne Label"]);
+  await expect(page.getByTestId("terms").locator("dt")).toHaveText(["Label", "Score", "markiert"]);
+  const accuracy = page.getByTestId("accuracy-definition");
+  await expect(accuracy).toContainText("gelten als markiert");
+  await expect(accuracy).toContainText("mit Label illegal");
+  await expect(accuracy).toContainText("Ein Modell, das keinen Knoten markiert, erreicht");
+  await expect(page.getByTestId("graph-canvas")).toHaveAttribute(
+    "aria-label",
+    /Farbe und Form nach Label \(illegal, legal, ohne Label\)/,
+  );
 });
 
 test("section links jump to the assessment and the limits", async ({ page }) => {

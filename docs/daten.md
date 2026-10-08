@@ -46,7 +46,7 @@ Aufbau je Zeitschritt:
   - Kette: `chainLengthMin` bis `chainLengthMax` Knoten, offen
 - Ein Muster schließt mit Wahrscheinlichkeit `patternLinkProbability` an das vorherige an (Ausgang auf Eingang). Sonst ist es über einzelne Kanten mit dem Hintergrund verbunden.
 - Kanten verlaufen nur innerhalb eines Zeitschritts. Jeder Zeitschritt ist eine schwach zusammenhängende Komponente, wie bei Elliptic. Die Tests prüfen das.
-- Labels: Musterknoten sind mit Wahrscheinlichkeit `illicitVisibility` als illicit gelabelt, sonst `unknown`. Gutartige Knoten sind mit Wahrscheinlichkeit `licitVisibility` als licit gelabelt, sonst `unknown`. Unter `unknown` liegen also bewusst verdeckte Musterknoten.
+- Labels: Musterknoten sind mit Wahrscheinlichkeit `illicitVisibility` als illicit gelabelt, sonst `unknown`. Gutartige Knoten sind mit Wahrscheinlichkeit `licitVisibility` als licit gelabelt, sonst `unknown`. Unter `unknown` liegen also bewusst verdeckte Musterknoten. Die Seite nennt die Labels „illegal“ (`illicit`), „legal“ (`licit`) und „ohne Label“ (`unknown`); Modellausgaben heißen dort nur Score, hoher Score oder markiert (Begriffsregel in `CLAUDE.md`).
 - IDs: `tx000001` bis `tx012000`, innerhalb eines Zeitschritts zufällig permutiert.
 
 Lokale Merkmale; Floats auf 6 Nachkommastellen gerundet, damit plattformabhängige Rundungsunterschiede verschwinden:

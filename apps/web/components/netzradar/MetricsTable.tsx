@@ -44,8 +44,9 @@ export function MetricsTable({ metrics }: { metrics: Metrics }) {
     <div className="space-y-3">
       <p id="metrics-table-note" className="max-w-[72ch] text-xs leading-relaxed text-slate">
         Testzeitraum Zeitschritte {split.test.from} bis {split.test.to}: {formatInteger(labelledTestCount(evaluation))}{" "}
-        Knoten mit Label, davon {formatInteger(evaluation.testPositives)} auffällig. Knoten ohne Label sind nicht
-        bewertet. Seed {metrics.seed}.
+        Knoten mit Label, davon {formatInteger(evaluation.testPositives)} mit Label illegal und{" "}
+        {formatInteger(evaluation.testNegatives)} mit Label legal. Knoten ohne Label sind nicht bewertet. Seed{" "}
+        {metrics.seed}.
       </p>
       <ScrollRegion
         labelledBy="metrics-table-caption"
@@ -127,7 +128,7 @@ export function MetricsTable({ metrics }: { metrics: Metrics }) {
             <tr data-testid="metrics-row-prevalence" className={REFERENCE_FILL}>
               <th scope="row" className={cx(CELL, NAME_CELL, "py-3 text-left align-baseline font-normal", REFERENCE_FILL)}>
                 <span className="font-medium text-ink">Konstanter Score</span>
-                <span className="mt-1 block text-xs text-slate">Anteil auffälliger Testknoten (Prävalenz)</span>
+                <span className="mt-1 block text-xs text-slate">Anteil der Testknoten mit Label illegal (Prävalenz)</span>
               </th>
               <td className={cx(NUMBER_CELL, "py-3")}>
                 <span className="display num block text-[1.375rem] leading-none text-slate">{formatDecimal(evaluation.prevalence)}</span>

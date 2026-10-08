@@ -181,35 +181,41 @@ describe("accuracySentence", () => {
     run("mlp", 0.3765, { accuracy: 0.8955, accuracyFlagged: 18, accuracyTruePositives: 12 }),
   ];
 
-  it("names the ceiling 775 / 852 = 0,9096 for 18 flagged nodes, only 0,0211 above all licit", () => {
+  it("names the ceiling 775 / 852 = 0,9096 for 18 flagged nodes, only 0,0211 above flagging nothing (757 / 852 = 0,8885)", () => {
     expect(accuracySentence(runs, EVALUATION)).toBe(
-      "Die Accuracy liegt zwischen 0,8744 und 0,9096; ein Modell, das alles unauffällig nennt, erreicht 0,8885. GCN und GraphSAGE markieren je 18 Knoten, alle auffällig. Mehr als 0,9096 ist bei 18 markierten Knoten nicht möglich, und das sind nur 0,0211 mehr als bei „alles unauffällig“. Deshalb ist Accuracy hier nur Nebenwert.",
+      "Die Accuracy liegt zwischen 0,8744 und 0,9096; ein Modell, das keinen Knoten markiert, erreicht 0,8885. GCN und GraphSAGE markieren je 18 Knoten, alle mit Label illegal. Mehr als 0,9096 ist bei 18 markierten Knoten nicht möglich, und das sind nur 0,0211 mehr als bei „nichts markiert“. Deshalb ist Accuracy hier nur Nebenwert.",
     );
   });
 
-  it("says when every method stays below all licit", () => {
+  it("says when every method stays below a model that flags nothing", () => {
     expect(accuracySentence(runs.slice(0, 2), EVALUATION)).toBe(
-      "Bei der Accuracy liegen alle gemessenen Verfahren unter den 0,8885 eines Modells, das alles unauffällig nennt. Deshalb ist Accuracy hier nur Nebenwert.",
+      "Bei der Accuracy liegen alle gemessenen Verfahren unter den 0,8885 eines Modells, das keinen Knoten markiert. Deshalb ist Accuracy hier nur Nebenwert.",
     );
+  });
+
+  it("never names the model output with a label word", () => {
+    for (const sentence of [accuracySentence(runs, EVALUATION), accuracySentence(runs.slice(0, 2), EVALUATION)]) {
+      expect(sentence).not.toMatch(/\bals (il)?legal\b|alles (il)?legal|einstuft/);
+    }
   });
 });
 
 describe("randomComparisonSentence", () => {
   it("names only the Isolation Forest with 0,1281 < 0,1420 as indistinguishable from random rankings", () => {
     expect(randomComparisonSentence([ZSCORE, IFOREST, GCN, GRAPHSAGE, MLP], EVALUATION)).toBe(
-      "Alle Verfahren außer Isolation Forest liegen über dem 95-%-Quantil zufälliger Rangfolgen (0,1420) und ordnen auffällige Knoten damit besser als Zufall. Bei Isolation Forest (0,1281) ist die PR-AUC von der einer zufälligen Rangfolge (Erwartungswert 0,1181) nicht zu unterscheiden.",
+      "Alle Verfahren außer Isolation Forest liegen über dem 95-%-Quantil zufälliger Rangfolgen (0,1420) und ordnen Knoten mit Label illegal damit besser als Zufall. Bei Isolation Forest (0,1281) ist die PR-AUC von der einer zufälligen Rangfolge (Erwartungswert 0,1181) nicht zu unterscheiden.",
     );
   });
 
   it("lists several methods below the quantile", () => {
     expect(randomComparisonSentence([run("zscore", 0.142), IFOREST, GCN], EVALUATION)).toBe(
-      "Alle Verfahren außer Z-Scores und Isolation Forest liegen über dem 95-%-Quantil zufälliger Rangfolgen (0,1420) und ordnen auffällige Knoten damit besser als Zufall. Bei Z-Scores (0,1420) und Isolation Forest (0,1281) ist die PR-AUC von der einer zufälligen Rangfolge (Erwartungswert 0,1181) nicht zu unterscheiden.",
+      "Alle Verfahren außer Z-Scores und Isolation Forest liegen über dem 95-%-Quantil zufälliger Rangfolgen (0,1420) und ordnen Knoten mit Label illegal damit besser als Zufall. Bei Z-Scores (0,1420) und Isolation Forest (0,1281) ist die PR-AUC von der einer zufälligen Rangfolge (Erwartungswert 0,1181) nicht zu unterscheiden.",
     );
   });
 
   it("handles all methods above and all below the quantile", () => {
     expect(randomComparisonSentence([ZSCORE, GCN], EVALUATION)).toBe(
-      "Alle Verfahren liegen über dem 95-%-Quantil zufälliger Rangfolgen (0,1420) und ordnen auffällige Knoten damit besser als Zufall.",
+      "Alle Verfahren liegen über dem 95-%-Quantil zufälliger Rangfolgen (0,1420) und ordnen Knoten mit Label illegal damit besser als Zufall.",
     );
     expect(randomComparisonSentence([IFOREST], EVALUATION)).toBe(
       "Kein Verfahren liegt über dem 95-%-Quantil zufälliger Rangfolgen (0,1420). Bei Isolation Forest (0,1281) ist die PR-AUC von der einer zufälligen Rangfolge (Erwartungswert 0,1181) nicht zu unterscheiden.",
@@ -235,7 +241,7 @@ describe("recallSentence", () => {
     expect(
       recallSentence([run("zscore", 0.1633, { recallAtPrecision50: 0.0211 }), run("iforest", 0.1281)], 95),
     ).toBe(
-      "Recall bei Precision ≥ 0,5 – Z-Scores 0,0211 (etwa 2 von 95); Isolation Forest 0,0000 (keine Schwelle erreicht diese Precision). Bei dieser Precision finden die Verfahren kaum auffällige Knoten.",
+      "Recall bei Precision ≥ 0,5 – Z-Scores 0,0211 (etwa 2 von 95); Isolation Forest 0,0000 (keine Schwelle erreicht diese Precision). Bei dieser Precision finden die Verfahren kaum Knoten mit Label illegal.",
     );
   });
 });

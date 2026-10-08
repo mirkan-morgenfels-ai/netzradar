@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, type ReactNode } from "react";
-import { formatDecimal, formatInteger, LABEL_TEXT } from "@/lib/netzradar/format";
+import { formatDecimal, formatInteger, LABEL_PHRASE } from "@/lib/netzradar/format";
 import type { NetNode } from "@/lib/netzradar/types";
 import { NodeSymbol } from "./NodeSymbol";
 
@@ -67,7 +67,7 @@ export function NodeDetail({ node, neighbors, seedCount, gnnLabel, onSelect }: N
           Ausgewählter Knoten
         </h3>
         <p className="sr-only" aria-live="polite">
-          {node ? `Ausgewählt: ${node.id}, ${LABEL_TEXT[node.label]}` : "Kein Knoten ausgewählt"}
+          {node ? `Ausgewählt: ${node.id}, ${LABEL_PHRASE[node.label]}` : "Kein Knoten ausgewählt"}
         </p>
         {node === null ? (
           <p className="mt-3 text-[13px] leading-relaxed text-navy-300">Noch kein Knoten gewählt.</p>
@@ -79,10 +79,12 @@ export function NodeDetail({ node, neighbors, seedCount, gnnLabel, onSelect }: N
                 {node.id}
               </span>
             </p>
-            <p className="inline-flex items-center gap-2 rounded-full bg-ivory px-3 py-1 text-xs font-medium text-ink">
-              <span className="sr-only">Label im Datensatz: </span>
+            <p
+              className="inline-flex items-center gap-2 rounded-full bg-ivory px-3 py-1 text-xs font-medium text-ink"
+              data-testid="node-detail-label"
+            >
               <NodeSymbol label={node.label} size={12} />
-              {LABEL_TEXT[node.label]}
+              {LABEL_PHRASE[node.label]}
             </p>
           </div>
         )}
@@ -109,8 +111,8 @@ export function NodeDetail({ node, neighbors, seedCount, gnnLabel, onSelect }: N
             </dl>
             {node.scoreGnn === null ? null : (
               <p className="mt-3 text-xs leading-relaxed text-slate">
-                Der GNN-Score ist die Differenz der beiden Ausgaben des Netzes (Logit auffällig minus Logit unauffällig),
-                keine Wahrscheinlichkeit. Höher heißt auffälliger.
+                Der GNN-Score ist die Differenz der beiden Ausgaben des Netzes (Logit für Label illegal minus Logit für
+                Label legal), keine Wahrscheinlichkeit. Je höher der Score, desto weiter oben steht der Knoten in der Rangfolge.
               </p>
             )}
             <p className="eyebrow mt-6">Lage im Netz</p>
@@ -143,7 +145,7 @@ export function NodeDetail({ node, neighbors, seedCount, gnnLabel, onSelect }: N
                       >
                         <NodeSymbol label={neighbor.label} size={10} />
                         {neighbor.id}
-                        <span className="sr-only">, {LABEL_TEXT[neighbor.label]}</span>
+                        <span className="sr-only">, {LABEL_PHRASE[neighbor.label]}</span>
                       </button>
                     </li>
                   ))}
