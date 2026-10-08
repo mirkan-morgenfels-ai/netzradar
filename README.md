@@ -155,7 +155,7 @@ Die Seite nimmt keine Eingaben und keine Dateien entgegen. Es gibt keine Anmeldu
 
 ## Reproduktion
 
-Voraussetzungen: Python 3.12 und [uv](https://docs.astral.sh/uv/). PyTorch 2.8 und PyTorch Geometric 2.7 kommen als optionales Extra `gnn` aus dem CPU-Index von PyTorch; eine GPU ist nicht nötig. Der Download beträgt unter Windows rund 620 MB (torch-Wheel 590,7 MiB); unter Linux ist das torch-Wheel laut CI-Log 175,4 MiB groß.
+Voraussetzungen: Python 3.12 und [uv](https://docs.astral.sh/uv/). PyTorch 2.13 und PyTorch Geometric 2.7 kommen als optionales Extra `gnn` aus dem CPU-Index von PyTorch; eine GPU ist nicht nötig. Der Download betrug unter Windows mit PyTorch 2.8 rund 620 MB (torch-Wheel 590,7 MiB); unter Linux ist das torch-2.13-Wheel laut CI-Log 182,9 MiB groß. Die veröffentlichten Ergebnisse stammen aus PyTorch 2.8; die CI hat sie mit 2.13 innerhalb 1e-4 reproduziert.
 
 Linux und macOS mit make:
 
