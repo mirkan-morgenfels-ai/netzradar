@@ -14,7 +14,7 @@ dependencies = [
 
 [project.optional-dependencies]
 gnn = [
-    "torch>=2.8,<2.9",
+    "torch>=2.8,<2.14",
     "torch-geometric>=2.7,<2.8",
 ]
 

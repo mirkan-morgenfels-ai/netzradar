@@ -51,7 +51,7 @@ def small_graph(dataset: Dataset, phase: str = "train") -> GraphTensors:
 
 
 def test_versions_match_the_lock_and_numpy_interop_is_silent() -> None:
-    assert torch.__version__.split("+")[0] == "2.8.0"
+    assert torch.__version__.split("+")[0] == "2.13.0"
     assert torch_geometric.__version__ == "2.7.0"
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
