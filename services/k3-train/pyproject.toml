@@ -25,7 +25,7 @@ k3-train = "k3_train.cli:main"
 [dependency-groups]
 dev = [
     "pytest>=8.3,<10",
-    "ruff>=0.16,<0.17",
+    "ruff>=0.16,<0.18",
 ]
 
 [tool.uv.sources]
