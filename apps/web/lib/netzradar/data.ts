@@ -1,7 +1,7 @@
 import edgesJson from "../../../../data/k3/edges.json";
 import metricsJson from "../../../../data/k3/metrics.json";
 import nodesJson from "../../../../data/k3/nodes.json";
-import { expectedRandomPrAuc, expectedScoreGnnMethod, isLearnedMethod } from "./summary";
+import { expectedRandomPrAuc, expectedScoreGnnMethod, isLearnedMethod, isNeuralMethod } from "./summary";
 import {
   EDGE_MODES,
   FEATURE_SETS,
@@ -11,6 +11,9 @@ import {
   NODE_LABELS,
   POSITIVE_WEIGHT_RULES,
   SCHEMA_VERSION,
+  type BoostingCandidate,
+  type BoostingEnvironment,
+  type BoostingTraining,
   type DatasetInfo,
   type EdgeMode,
   type EdgesFile,
@@ -18,18 +21,23 @@ import {
   type FeatureSet,
   type GraphMethod,
   type Homophily,
+  type Hop,
   type JsonObject,
-  type LearnedMethod,
+  type Method,
   type Metrics,
   type NetEdge,
   type NetNode,
   type NetzRadarData,
+  type NeuralMethod,
+  type NeuralTraining,
   type NodeSelection,
   type NodesFile,
+  type PositiveWeightRule,
   type PrCurvePoint,
   type Run,
   type Scaling,
   type SearchCandidate,
+  type SeedSpread,
   type SplitInfo,
   type StepRange,
   type Training,
@@ -38,17 +46,19 @@ import {
 
 export const MAX_PR_CURVE_POINTS = 101;
 const CONSISTENCY_TOLERANCE = 1e-4;
+const ROUNDED_MEAN_TOLERANCE = CONSISTENCY_TOLERANCE + 1e-9;
 const MAX_HOP = 2;
+const MIN_LEAF_NODES = 2;
 const ISO_UTC_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
-export const ARCHITECTURES: Record<LearnedMethod, string> = {
+export const ARCHITECTURES: Record<NeuralMethod, string> = {
   gcn: "GCNConv",
   graphsage: "SAGEConv(aggr=mean)",
   mlp: "Linear",
 };
 
-export const EDGE_MODE_BY_METHOD: Record<LearnedMethod, EdgeMode> = {
+export const EDGE_MODE_BY_METHOD: Record<NeuralMethod, EdgeMode> = {
   gcn: "undirected",
   graphsage: "undirected",
   mlp: "none",
@@ -80,6 +90,35 @@ const TRAINING_KEYS = [
   "validationSteps",
   "finalFitSteps",
   "search",
+  "seedSpread",
+  "environment",
+] as const;
+
+const BOOSTING_KEYS = [
+  "estimator",
+  "loss",
+  "score",
+  "learningRate",
+  "maxIter",
+  "maxLeafNodes",
+  "minSamplesLeaf",
+  "l2Regularization",
+  "maxBins",
+  "maxFeatures",
+  "earlyStopping",
+  "randomState",
+  "positiveWeight",
+  "positiveWeightRule",
+  "edges",
+  "features",
+  "selectedIteration",
+  "selectionMetric",
+  "validationPrAuc",
+  "selectionSteps",
+  "validationSteps",
+  "finalFitSteps",
+  "search",
+  "seedSpread",
   "environment",
 ] as const;
 
@@ -104,7 +143,40 @@ const SEARCH_KEYS = [
   "selected",
 ] as const;
 
+const BOOSTING_SEARCH_KEYS = [
+  "featureSet",
+  "positiveWeightRule",
+  "positiveWeight",
+  "maxLeafNodes",
+  "validationPrAuc",
+  "bestIteration",
+  "selected",
+] as const;
+
+const SPREAD_KEYS = ["seeds", "reportedSeed", "prAuc", "mean", "min", "max"] as const;
+
 const ENVIRONMENT_KEYS = ["torch", "torchGeometric", "python", "platform", "threads", "deterministicAlgorithms"] as const;
+
+const BOOSTING_ENVIRONMENT_KEYS = ["scikitLearn", "python", "platform", "threads"] as const;
+
+const SELECTION_KEYS = ["scoreField", "scoreFieldGnn", "pool", "seeds", "hops", "maxNodes", "truncated"] as const;
+
+const NODE_KEYS = [
+  "id",
+  "x",
+  "y",
+  "label",
+  "timeStep",
+  "scoreZscore",
+  "scoreIforest",
+  "scoreGnn",
+  "seedRank",
+  "seedRankGnn",
+  "hop",
+  "hopGnn",
+  "inDegree",
+  "outDegree",
+] as const;
 
 export const FIXED_TRAINING = {
   layers: 2,
@@ -123,6 +195,18 @@ export const FIXED_SCALING = {
   scale: "mad",
   madScale: 1.4826,
   fallback: ["std", "one"],
+} as const;
+
+export const FIXED_BOOSTING = {
+  estimator: "HistGradientBoostingClassifier",
+  loss: "log_loss",
+  score: "logOddsIllicit",
+  learningRate: 0.1,
+  minSamplesLeaf: 20,
+  l2Regularization: 0,
+  maxBins: 255,
+  maxFeatures: 1,
+  edges: "none",
 } as const;
 
 export const DTYPES = ["float64", "float32"] as const;
@@ -230,8 +314,8 @@ function sameRange(a: StepRange, b: StepRange): boolean {
   return a.from === b.from && a.to === b.to;
 }
 
-function checkClose(actual: number, expected: number, path: string): void {
-  if (!(Math.abs(actual - expected) <= CONSISTENCY_TOLERANCE)) {
+function checkClose(actual: number, expected: number, path: string, tolerance = CONSISTENCY_TOLERANCE): void {
+  if (!(Math.abs(actual - expected) <= tolerance)) {
     fail(path, `Wert ${actual} passt nicht zu ${expected.toFixed(4)}`);
   }
 }
@@ -427,6 +511,19 @@ function parseCandidate(value: unknown, path: string, maxEpochs: number, patienc
   };
 }
 
+function parseBoostingCandidate(value: unknown, path: string, maxIter: number): BoostingCandidate {
+  const raw = readObject(value, path, BOOSTING_SEARCH_KEYS);
+  return {
+    featureSet: readEnum(raw.featureSet, FEATURE_SETS, `${path}.featureSet`),
+    positiveWeightRule: readEnum(raw.positiveWeightRule, POSITIVE_WEIGHT_RULES, `${path}.positiveWeightRule`),
+    positiveWeight: readPositive(raw.positiveWeight, `${path}.positiveWeight`),
+    maxLeafNodes: readInteger(raw.maxLeafNodes, `${path}.maxLeafNodes`, MIN_LEAF_NODES),
+    validationPrAuc: readUnit(raw.validationPrAuc, `${path}.validationPrAuc`),
+    bestIteration: readInteger(raw.bestIteration, `${path}.bestIteration`, 1, maxIter),
+    selected: readBoolean(raw.selected, `${path}.selected`),
+  };
+}
+
 function parseEnvironment(value: unknown, path: string): TrainingEnvironment {
   const raw = readObject(value, path, ENVIRONMENT_KEYS);
   return {
@@ -436,6 +533,16 @@ function parseEnvironment(value: unknown, path: string): TrainingEnvironment {
     platform: readString(raw.platform, `${path}.platform`),
     threads: readInteger(raw.threads, `${path}.threads`, 1),
     deterministicAlgorithms: readBoolean(raw.deterministicAlgorithms, `${path}.deterministicAlgorithms`),
+  };
+}
+
+function parseBoostingEnvironment(value: unknown, path: string): BoostingEnvironment {
+  const raw = readObject(value, path, BOOSTING_ENVIRONMENT_KEYS);
+  return {
+    scikitLearn: readString(raw.scikitLearn, `${path}.scikitLearn`),
+    python: readString(raw.python, `${path}.python`),
+    platform: readString(raw.platform, `${path}.platform`),
+    threads: readInteger(raw.threads, `${path}.threads`, 1),
   };
 }
 
@@ -452,21 +559,21 @@ function parseSteps(raw: RawObject, path: string) {
   return { selectionSteps, validationSteps, finalFitSteps };
 }
 
-function parseSearch(
-  value: unknown,
-  path: string,
-  maxEpochs: number,
-  patience: number,
-): { search: SearchCandidate[]; selected: SearchCandidate } {
-  const search = readArray(value, path).map((entry, index) =>
-    parseCandidate(entry, `${path}[${index}]`, maxEpochs, patience),
-  );
+interface Candidate {
+  featureSet: FeatureSet;
+  positiveWeightRule: PositiveWeightRule;
+  positiveWeight: number;
+  validationPrAuc: number;
+  selected: boolean;
+}
+
+function selectFirstBest<T extends Candidate>(search: readonly T[], path: string, identity: (candidate: T) => string): T {
   if (search.length === 0) fail(path, "mindestens ein Kandidat erwartet");
-  const pairs = new Set<string>();
+  const keys = new Set<string>();
   search.forEach((candidate, index) => {
-    const pair = `${candidate.featureSet} ${candidate.positiveWeightRule}`;
-    if (pairs.has(pair)) fail(`${path}[${index}]`, `Kandidat ${pair} doppelt`);
-    pairs.add(pair);
+    const key = identity(candidate);
+    if (keys.has(key)) fail(`${path}[${index}]`, `Kandidat ${key} doppelt`);
+    keys.add(key);
   });
   const selectedIndices = search.flatMap((candidate, index) => (candidate.selected ? [index] : []));
   if (selectedIndices.length !== 1) fail(path, `genau ein gewählter Kandidat erwartet, gefunden ${selectedIndices.length}`);
@@ -481,10 +588,54 @@ function parseSearch(
       fail(`${path}[${index}].validationPrAuc`, "gleich hoch wie beim gewählten Kandidaten; bei Gleichstand gilt der frühere");
     }
   });
-  return { search, selected };
+  return selected;
 }
 
-function parseTraining(value: unknown, path: string, method: LearnedMethod, featureSet: FeatureSet): Training {
+function checkSelected(
+  selected: Candidate,
+  path: string,
+  featureSet: FeatureSet,
+  positiveWeightRule: PositiveWeightRule,
+  positiveWeight: number,
+  validationPrAuc: number,
+): void {
+  if (selected.featureSet !== featureSet) fail(`${path}.search`, "gewählter Merkmalssatz passt nicht zu featureSet");
+  if (selected.positiveWeightRule !== positiveWeightRule) {
+    fail(`${path}.search`, "Gewichtsregel des gewählten Kandidaten passt nicht zu positiveWeightRule");
+  }
+  checkClose(validationPrAuc, selected.validationPrAuc, `${path}.validationPrAuc`);
+  if (positiveWeightRule === "fixed") checkClose(positiveWeight, selected.positiveWeight, `${path}.positiveWeight`);
+}
+
+function parseSeedSpread(value: unknown, path: string): SeedSpread {
+  const raw = readObject(value, path, SPREAD_KEYS);
+  const seeds = readArray(raw.seeds, `${path}.seeds`).map((entry, index) => readInteger(entry, `${path}.seeds[${index}]`));
+  if (seeds.length === 0) fail(`${path}.seeds`, "mindestens ein Seed erwartet");
+  if (new Set(seeds).size !== seeds.length) fail(`${path}.seeds`, "Seeds doppelt");
+  const prAuc = readArray(raw.prAuc, `${path}.prAuc`).map((entry, index) => readUnit(entry, `${path}.prAuc[${index}]`));
+  if (prAuc.length !== seeds.length) fail(`${path}.prAuc`, `${seeds.length} Werte erwartet, gefunden ${prAuc.length}`);
+  const reportedSeed = readInteger(raw.reportedSeed, `${path}.reportedSeed`);
+  if (!seeds.includes(reportedSeed)) fail(`${path}.reportedSeed`, `Seed ${reportedSeed} fehlt in seeds`);
+  const mean = readUnit(raw.mean, `${path}.mean`);
+  const min = readUnit(raw.min, `${path}.min`);
+  const max = readUnit(raw.max, `${path}.max`);
+  const smallest = Math.min(...prAuc);
+  const largest = Math.max(...prAuc);
+  if (min !== smallest) fail(`${path}.min`, `kleinster Wert ${smallest} erwartet`);
+  if (max !== largest) fail(`${path}.max`, `größter Wert ${largest} erwartet`);
+  if (mean < min || mean > max) fail(`${path}.mean`, "liegt nicht zwischen min und max");
+  checkClose(mean, prAuc.reduce((sum, entry) => sum + entry, 0) / prAuc.length, `${path}.mean`, ROUNDED_MEAN_TOLERANCE);
+  return { seeds, reportedSeed, prAuc, mean, min, max };
+}
+
+function checkSpreadAgainstRun(spread: SeedSpread, path: string, seed: number, prAuc: number): void {
+  if (spread.reportedSeed !== seed) fail(`${path}.reportedSeed`, `Seed ${seed} des Runs erwartet`);
+  const index = spread.seeds.indexOf(spread.reportedSeed);
+  const value = spread.prAuc[index];
+  if (value !== prAuc) fail(`${path}.prAuc[${index}]`, `Wert ${value} weicht von prAuc ${prAuc} des Runs ab`);
+}
+
+function parseNeuralTraining(value: unknown, path: string, method: NeuralMethod, featureSet: FeatureSet): NeuralTraining {
   const raw = readObject(value, path, TRAINING_KEYS);
   const features = readStringList(raw.features, `${path}.features`, 1);
   const maxEpochs = readInteger(raw.maxEpochs, `${path}.maxEpochs`, 1);
@@ -493,15 +644,14 @@ function parseTraining(value: unknown, path: string, method: LearnedMethod, feat
   const validationPrAuc = readUnit(raw.validationPrAuc, `${path}.validationPrAuc`);
   const positiveWeight = readPositive(raw.positiveWeight, `${path}.positiveWeight`);
   const positiveWeightRule = readEnum(raw.positiveWeightRule, POSITIVE_WEIGHT_RULES, `${path}.positiveWeightRule`);
-  const { search, selected } = parseSearch(raw.search, `${path}.search`, maxEpochs, patience);
-  if (selected.featureSet !== featureSet) fail(`${path}.search`, "gewählter Merkmalssatz passt nicht zu featureSet");
-  if (selected.positiveWeightRule !== positiveWeightRule) {
-    fail(`${path}.search`, "Gewichtsregel des gewählten Kandidaten passt nicht zu positiveWeightRule");
-  }
+  const search = readArray(raw.search, `${path}.search`).map((entry, index) =>
+    parseCandidate(entry, `${path}.search[${index}]`, maxEpochs, patience),
+  );
+  const selected = selectFirstBest(search, `${path}.search`, (candidate) => `${candidate.featureSet} ${candidate.positiveWeightRule}`);
+  checkSelected(selected, path, featureSet, positiveWeightRule, positiveWeight, validationPrAuc);
   if (selected.bestEpoch !== selectedEpoch) fail(`${path}.selectedEpoch`, "passt nicht zur besten Epoche des gewählten Kandidaten");
-  checkClose(validationPrAuc, selected.validationPrAuc, `${path}.validationPrAuc`);
-  if (positiveWeightRule === "fixed") checkClose(positiveWeight, selected.positiveWeight, `${path}.positiveWeight`);
   return {
+    kind: "neural",
     architecture: readLiteral(raw.architecture, ARCHITECTURES[method], `${path}.architecture`),
     layers: readLiteral(raw.layers, FIXED_TRAINING.layers, `${path}.layers`),
     hidden: readLiteral(raw.hidden, FIXED_TRAINING.hidden, `${path}.hidden`),
@@ -525,8 +675,79 @@ function parseTraining(value: unknown, path: string, method: LearnedMethod, feat
     validationPrAuc,
     ...parseSteps(raw, path),
     search,
+    seedSpread: parseSeedSpread(raw.seedSpread, `${path}.seedSpread`),
     environment: parseEnvironment(raw.environment, `${path}.environment`),
   };
+}
+
+function parseBoostingTraining(value: unknown, path: string, featureSet: FeatureSet, seed: number): BoostingTraining {
+  const raw = readObject(value, path, BOOSTING_KEYS);
+  const features = readStringList(raw.features, `${path}.features`, 1);
+  const maxIter = readInteger(raw.maxIter, `${path}.maxIter`, 1);
+  const maxLeafNodes = readInteger(raw.maxLeafNodes, `${path}.maxLeafNodes`, MIN_LEAF_NODES);
+  const selectedIteration = readInteger(raw.selectedIteration, `${path}.selectedIteration`, 1, maxIter);
+  const validationPrAuc = readUnit(raw.validationPrAuc, `${path}.validationPrAuc`);
+  const positiveWeight = readPositive(raw.positiveWeight, `${path}.positiveWeight`);
+  const positiveWeightRule = readEnum(raw.positiveWeightRule, POSITIVE_WEIGHT_RULES, `${path}.positiveWeightRule`);
+  const search = readArray(raw.search, `${path}.search`).map((entry, index) =>
+    parseBoostingCandidate(entry, `${path}.search[${index}]`, maxIter),
+  );
+  const selected = selectFirstBest(
+    search,
+    `${path}.search`,
+    (candidate) =>
+      `${candidate.featureSet} ${candidate.positiveWeightRule} ${String(candidate.positiveWeight)} ${candidate.maxLeafNodes}`,
+  );
+  checkSelected(selected, path, featureSet, positiveWeightRule, positiveWeight, validationPrAuc);
+  if (selected.maxLeafNodes !== maxLeafNodes) fail(`${path}.maxLeafNodes`, "passt nicht zum gewählten Kandidaten");
+  if (selected.bestIteration !== selectedIteration) {
+    fail(`${path}.selectedIteration`, "passt nicht zur besten Iteration des gewählten Kandidaten");
+  }
+  if (raw.earlyStopping !== false) fail(`${path}.earlyStopping`, "false erwartet");
+  const randomState = readInteger(raw.randomState, `${path}.randomState`);
+  if (randomState !== seed) fail(`${path}.randomState`, `Seed ${seed} des Runs erwartet`);
+  return {
+    kind: "boosting",
+    estimator: readLiteral(raw.estimator, FIXED_BOOSTING.estimator, `${path}.estimator`),
+    loss: readLiteral(raw.loss, FIXED_BOOSTING.loss, `${path}.loss`),
+    score: readLiteral(raw.score, FIXED_BOOSTING.score, `${path}.score`),
+    learningRate: readLiteral(raw.learningRate, FIXED_BOOSTING.learningRate, `${path}.learningRate`),
+    maxIter,
+    maxLeafNodes,
+    minSamplesLeaf: readLiteral(raw.minSamplesLeaf, FIXED_BOOSTING.minSamplesLeaf, `${path}.minSamplesLeaf`),
+    l2Regularization: readLiteral(raw.l2Regularization, FIXED_BOOSTING.l2Regularization, `${path}.l2Regularization`),
+    maxBins: readLiteral(raw.maxBins, FIXED_BOOSTING.maxBins, `${path}.maxBins`),
+    maxFeatures: readLiteral(raw.maxFeatures, FIXED_BOOSTING.maxFeatures, `${path}.maxFeatures`),
+    earlyStopping: false,
+    randomState,
+    positiveWeight,
+    positiveWeightRule,
+    edges: readLiteral(readEnum(raw.edges, EDGE_MODES, `${path}.edges`), FIXED_BOOSTING.edges, `${path}.edges`),
+    features,
+    selectedIteration,
+    selectionMetric: readLiteral(raw.selectionMetric, "validationPrAuc", `${path}.selectionMetric`),
+    validationPrAuc,
+    ...parseSteps(raw, path),
+    search,
+    seedSpread: parseSeedSpread(raw.seedSpread, `${path}.seedSpread`),
+    environment: parseBoostingEnvironment(raw.environment, `${path}.environment`),
+  };
+}
+
+function parseTraining(
+  hyperparameters: JsonObject,
+  path: string,
+  method: Method,
+  featureSet: FeatureSet,
+  seed: number,
+): Training | null {
+  if (!isLearnedMethod(method)) {
+    if ("seedSpread" in hyperparameters) fail(`${path}.seedSpread`, "nur bei gelernten Verfahren erwartet");
+    return null;
+  }
+  return isNeuralMethod(method)
+    ? parseNeuralTraining(hyperparameters, path, method, featureSet)
+    : parseBoostingTraining(hyperparameters, path, featureSet, seed);
 }
 
 function parseRun(value: unknown, path: string): Run {
@@ -556,17 +777,19 @@ function parseRun(value: unknown, path: string): Run {
     fail(`${path}.accuracyTruePositives`, "mehr Treffer als markierte Knoten");
   }
   const hyperparameters = readJsonObject(raw.hyperparameters, `${path}.hyperparameters`);
+  const seed = readInteger(raw.seed, `${path}.seed`);
+  const prAuc = readUnit(raw.prAuc, `${path}.prAuc`);
+  const training = parseTraining(hyperparameters, `${path}.hyperparameters`, method, featureSet, seed);
+  if (training !== null) checkSpreadAgainstRun(training.seedSpread, `${path}.hyperparameters.seedSpread`, seed, prAuc);
   return {
     method,
     displayName: readString(raw.displayName, `${path}.displayName`),
     featureSet,
-    seed: readInteger(raw.seed, `${path}.seed`),
+    seed,
     date,
     hyperparameters,
-    training: isLearnedMethod(method)
-      ? parseTraining(hyperparameters, `${path}.hyperparameters`, method, featureSet)
-      : null,
-    prAuc: readUnit(raw.prAuc, `${path}.prAuc`),
+    training,
+    prAuc,
     precisionAtRecall50: readUnit(raw.precisionAtRecall50, `${path}.precisionAtRecall50`),
     recallAtPrecision50: readUnit(raw.recallAtPrecision50, `${path}.recallAtPrecision50`),
     accuracy: readUnit(raw.accuracy, `${path}.accuracy`),
@@ -636,10 +859,14 @@ export function parseMetrics(value: unknown): Metrics {
   };
 }
 
-function parseSelection(value: unknown, path: string): NodeSelection {
-  const raw = readObject(value, path, ["scoreField", "pool", "seeds", "hops", "maxNodes", "truncated"]);
+function parseSelection(value: unknown, path: string, scoreGnnMethod: GraphMethod | null): NodeSelection {
+  const raw = readObject(value, path, SELECTION_KEYS);
+  if (scoreGnnMethod === null && raw.scoreFieldGnn !== null) {
+    fail(`${path}.scoreFieldGnn`, "null erwartet, weil scoreGnnMethod null ist");
+  }
   return {
     scoreField: readLiteral(raw.scoreField, "scoreIforest", `${path}.scoreField`),
+    scoreFieldGnn: scoreGnnMethod === null ? null : readLiteral(raw.scoreFieldGnn, "scoreGnn", `${path}.scoreFieldGnn`),
     pool: readLiteral(raw.pool, "test", `${path}.pool`),
     seeds: readInteger(raw.seeds, `${path}.seeds`, 1),
     hops: readInteger(raw.hops, `${path}.hops`, 0, MAX_HOP),
@@ -648,36 +875,37 @@ function parseSelection(value: unknown, path: string): NodeSelection {
   };
 }
 
+function readStart(
+  raw: RawObject,
+  path: string,
+  selection: NodeSelection,
+  rankKey: "seedRank" | "seedRankGnn",
+  hopKey: "hop" | "hopGnn",
+): { rank: number | null; hop: Hop | null } {
+  const hop = raw[hopKey] === null ? null : readEnum(raw[hopKey], HOPS, `${path}.${hopKey}`);
+  if (hop !== null && hop > selection.hops) fail(`${path}.${hopKey}`, `Abstand größer als ${selection.hops}`);
+  const rank = raw[rankKey] === null ? null : readInteger(raw[rankKey], `${path}.${rankKey}`, 1, selection.seeds);
+  if ((rank === null) !== (hop !== 0)) fail(`${path}.${rankKey}`, "Startknoten und Abstand 0 passen nicht zusammen");
+  return { rank, hop };
+}
+
 function parseNode(
   value: unknown,
   path: string,
   selection: NodeSelection,
   scoreGnnMethod: GraphMethod | null,
 ): NetNode {
-  const raw = readObject(value, path, [
-    "id",
-    "x",
-    "y",
-    "label",
-    "timeStep",
-    "scoreZscore",
-    "scoreIforest",
-    "scoreGnn",
-    "seedRank",
-    "hop",
-    "inDegree",
-    "outDegree",
-  ]);
-  const hop = readEnum(raw.hop, HOPS, `${path}.hop`);
-  if (hop > selection.hops) fail(`${path}.hop`, `Abstand größer als ${selection.hops}`);
-  const seedRank = raw.seedRank === null ? null : readInteger(raw.seedRank, `${path}.seedRank`, 1, selection.seeds);
-  if ((seedRank === null) !== (hop !== 0)) fail(`${path}.seedRank`, "Startknoten und Abstand 0 passen nicht zusammen");
-  if (scoreGnnMethod === null && raw.scoreGnn !== null) {
-    fail(`${path}.scoreGnn`, "null erwartet, weil scoreGnnMethod null ist");
-  }
-  if (scoreGnnMethod !== null && raw.scoreGnn === null) {
+  const raw = readObject(value, path, NODE_KEYS);
+  if (scoreGnnMethod === null) {
+    for (const key of ["scoreGnn", "seedRankGnn", "hopGnn"] as const) {
+      if (raw[key] !== null) fail(`${path}.${key}`, "null erwartet, weil scoreGnnMethod null ist");
+    }
+  } else if (raw.scoreGnn === null) {
     fail(`${path}.scoreGnn`, `Zahl erwartet, weil scoreGnnMethod ${scoreGnnMethod} ist`);
   }
+  const iforest = readStart(raw, path, selection, "seedRank", "hop");
+  const gnn = readStart(raw, path, selection, "seedRankGnn", "hopGnn");
+  if (iforest.hop === null && gnn.hop === null) fail(path, "weder hop noch hopGnn gesetzt");
   return {
     id: readString(raw.id, `${path}.id`),
     x: readNumber(raw.x, `${path}.x`, -1, 1),
@@ -687,39 +915,51 @@ function parseNode(
     scoreZscore: readNumber(raw.scoreZscore, `${path}.scoreZscore`, 0),
     scoreIforest: readNumber(raw.scoreIforest, `${path}.scoreIforest`),
     scoreGnn: raw.scoreGnn === null ? null : readNumber(raw.scoreGnn, `${path}.scoreGnn`),
-    seedRank,
-    hop,
+    seedRank: iforest.rank,
+    seedRankGnn: gnn.rank,
+    hop: iforest.hop,
+    hopGnn: gnn.hop,
     inDegree: readInteger(raw.inDegree, `${path}.inDegree`),
     outDegree: readInteger(raw.outDegree, `${path}.outDegree`),
   };
+}
+
+function checkRanks(nodes: readonly NetNode[], path: string, key: "seedRank" | "seedRankGnn", selection: NodeSelection): void {
+  const ranks = new Set<number>();
+  nodes.forEach((node, index) => {
+    const rank = node[key];
+    if (rank === null) return;
+    if (ranks.has(rank)) fail(`${path}.nodes[${index}].${key}`, `Rang ${rank} doppelt`);
+    ranks.add(rank);
+  });
+  if (ranks.size === 0) fail(`${path}.nodes`, `kein Startknoten mit ${key}`);
+  if (Math.max(...ranks) !== ranks.size) {
+    fail(`${path}.nodes`, `Startknoten-Ränge ${key} müssen lückenlos 1 bis ${ranks.size} sein`);
+  }
+  if (!selection.truncated && ranks.size !== selection.seeds) {
+    fail(`${path}.nodes`, `${selection.seeds} Startknoten mit ${key} erwartet, gefunden ${ranks.size}`);
+  }
 }
 
 export function parseNodes(value: unknown): NodesFile {
   const path = "nodes";
   const raw = readObject(value, path, ["schemaVersion", "selection", "scoreGnnMethod", "nodes"]);
   const schemaVersion = readLiteral(raw.schemaVersion, SCHEMA_VERSION, `${path}.schemaVersion`);
-  const selection = parseSelection(raw.selection, `${path}.selection`);
   const scoreGnnMethod =
     raw.scoreGnnMethod === null ? null : readEnum(raw.scoreGnnMethod, GRAPH_METHODS, `${path}.scoreGnnMethod`);
+  const selection = parseSelection(raw.selection, `${path}.selection`, scoreGnnMethod);
   const entries = readArray(raw.nodes, `${path}.nodes`);
   if (entries.length === 0 || entries.length > selection.maxNodes) {
     fail(`${path}.nodes`, `1 bis ${selection.maxNodes} Knoten erwartet, gefunden ${entries.length}`);
   }
   const nodes = entries.map((entry, index) => parseNode(entry, `${path}.nodes[${index}]`, selection, scoreGnnMethod));
   const ids = new Set<string>();
-  const ranks = new Set<number>();
   nodes.forEach((node, index) => {
     if (ids.has(node.id)) fail(`${path}.nodes[${index}].id`, `ID ${node.id} doppelt`);
     ids.add(node.id);
-    if (node.seedRank !== null) {
-      if (ranks.has(node.seedRank)) fail(`${path}.nodes[${index}].seedRank`, `Rang ${node.seedRank} doppelt`);
-      ranks.add(node.seedRank);
-    }
   });
-  if (ranks.size === 0) fail(`${path}.nodes`, "kein Startknoten");
-  if (Math.max(...ranks) !== ranks.size) {
-    fail(`${path}.nodes`, `Startknoten-Ränge müssen lückenlos 1 bis ${ranks.size} sein`);
-  }
+  checkRanks(nodes, path, "seedRank", selection);
+  if (scoreGnnMethod !== null) checkRanks(nodes, path, "seedRankGnn", selection);
   return { schemaVersion, selection, scoreGnnMethod, nodes };
 }
 

@@ -41,6 +41,7 @@ updates:
           - pandas
           - scikit-learn
           - scipy
+          - threadpoolctl
       python-gnn:
         patterns:
           - torch

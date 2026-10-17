@@ -4,31 +4,52 @@ import {
   beatsRandomRankings,
   bestAccuracyAtFlagged,
   bestBaseline,
+  bestEdgeless,
   bestRun,
+  boostingTraining,
   compareScores,
   comparisonMargin,
+  edgelessRuns,
+  excerptCounts,
   expectedRandomPrAuc,
   expectedScoreGnnMethod,
   featureNames,
   finalTrainRatioWeight,
   hitsAtRecall,
   illicitShareAmongLabelled,
+  hasSpread,
   isGraphMethod,
   isLearnedMethod,
+  isNeuralMethod,
   labelTotal,
   labelledTestCount,
   meanDegree,
   metricRows,
+  neighbourhoodNodes,
+  neuralTraining,
   numberParameter,
   parameterEntries,
   reachedEpochLimit,
+  reachedIterationLimit,
   runDateRange,
   searchWeight,
+  seedSpreadOf,
   selectedCandidate,
+  spreadSeeds,
   zeroMadFeatures,
 } from "../summary";
 import { METHODS, type NetNode } from "../types";
-import { EVALUATION, candidate, learnedRun, run, training } from "./fixtures";
+import {
+  EVALUATION,
+  boostingCandidate,
+  boostingRun,
+  boostingTraining as boostingFixture,
+  candidate,
+  learnedRun,
+  run,
+  spread,
+  training,
+} from "./fixtures";
 
 describe("metricRows", () => {
   it("lists measured baselines first and marks missing learned runs as pending", () => {
@@ -36,6 +57,7 @@ describe("metricRows", () => {
     expect(rows.map((row) => [row.method, row.kind])).toEqual([
       ["zscore", "measured"],
       ["iforest", "measured"],
+      ["hgb", "pending"],
       ["gcn", "pending"],
       ["graphsage", "pending"],
       ["mlp", "pending"],
@@ -46,23 +68,26 @@ describe("metricRows", () => {
     const rows = metricRows([run("zscore", 0.2), run("gcn", 0.3)]);
     expect(rows.map((row) => [row.method, row.kind])).toEqual([
       ["zscore", "measured"],
+      ["hgb", "pending"],
       ["gcn", "measured"],
       ["graphsage", "pending"],
       ["mlp", "pending"],
     ]);
   });
 
-  it("orders all five measured runs like the contract and leaves nothing pending", () => {
+  it("orders all six measured runs like the contract and leaves nothing pending", () => {
     const rows = metricRows([
       run("mlp", 0.3765),
       run("graphsage", 0.8941),
       run("zscore", 0.1633),
       run("gcn", 0.7897),
+      run("hgb", 0.6087),
       run("iforest", 0.1281),
     ]);
     expect(rows.map((row) => [row.method, row.kind])).toEqual([
       ["zscore", "measured"],
       ["iforest", "measured"],
+      ["hgb", "measured"],
       ["gcn", "measured"],
       ["graphsage", "measured"],
       ["mlp", "measured"],
@@ -72,8 +97,10 @@ describe("metricRows", () => {
 
 describe("method groups", () => {
   it("separates learned and graph methods", () => {
-    expect(METHODS.map(isLearnedMethod)).toEqual([false, false, true, true, true]);
-    expect(METHODS.map(isGraphMethod)).toEqual([false, false, true, true, false]);
+    expect(METHODS).toEqual(["zscore", "iforest", "hgb", "gcn", "graphsage", "mlp"]);
+    expect(METHODS.map(isLearnedMethod)).toEqual([false, false, true, true, true, true]);
+    expect(METHODS.map(isNeuralMethod)).toEqual([false, false, false, true, true, true]);
+    expect(METHODS.map(isGraphMethod)).toEqual([false, false, false, true, true, false]);
   });
 });
 
@@ -307,5 +334,92 @@ describe("figures for the evaluation text", () => {
     expect(numberParameter({ illicitVisibility: 0.55, name: "x" }, "illicitVisibility")).toBe(0.55);
     expect(numberParameter({ name: "x" }, "name")).toBeNull();
     expect(numberParameter(null, "seed")).toBeNull();
+  });
+});
+
+describe("gradient boosting and seed spread", () => {
+  it("separates neural and boosting training", () => {
+    const hgb = boostingRun(0.6087);
+    const gcn = learnedRun("gcn", 0.7897, 0.7364);
+    expect(boostingTraining(hgb)?.maxLeafNodes).toBe(7);
+    expect(neuralTraining(hgb)).toBeNull();
+    expect(neuralTraining(gcn)?.layers).toBe(2);
+    expect(boostingTraining(gcn)).toBeNull();
+    expect(boostingTraining(null)).toBeNull();
+  });
+
+  it("finds the selected boosting candidate and the tree limit", () => {
+    const search = [
+      boostingCandidate({ maxLeafNodes: 31, validationPrAuc: 0.5034, bestIteration: 68, selected: false }),
+      boostingCandidate(),
+    ];
+    expect(selectedCandidate(boostingFixture({ search }))?.bestIteration).toBe(128);
+    expect(reachedIterationLimit(boostingFixture({ selectedIteration: 300, maxIter: 300 }))).toBe(true);
+    expect(reachedIterationLimit(boostingFixture({ selectedIteration: 128, maxIter: 300 }))).toBe(false);
+  });
+
+  it("ignores the boosting weights in the weights of the neural search", () => {
+    const runs = [boostingRun(0.6087), learnedRun("gcn", 0.7897, 0.7364)];
+    expect(searchWeight(runs, "fixed")).toBe(20);
+    expect(finalTrainRatioWeight([boostingRun(0.6087, { positiveWeightRule: "trainRatio", positiveWeight: 9.2893 })])).toBeNull();
+  });
+
+  it("collects the methods without edges and picks the stronger one", () => {
+    const runs = [run("zscore", 0.1633), boostingRun(0.6087), learnedRun("gcn", 0.7897, 0.7364), learnedRun("mlp", 0.3765, 0.497)];
+    expect(edgelessRuns(runs).map((entry) => entry.method)).toEqual(["hgb", "mlp"]);
+    expect(bestEdgeless(runs)?.method).toBe("hgb");
+    expect(bestEdgeless([run("zscore", 0.1633)])).toBeNull();
+  });
+
+  it("reads the seed spread and recognises a spread of 0", () => {
+    const hgb = boostingRun(0.6087);
+    const gcn = learnedRun("gcn", 0.7897, 0.7364, { seedSpread: spread([0.7897, 0.8148, 0.8008, 0.7947, 0.8009]) });
+    expect(seedSpreadOf(run("zscore", 0.1633))).toBeNull();
+    expect(seedSpreadOf(gcn)?.mean).toBeCloseTo(4.0009 / 5, 10);
+    expect(hasSpread(seedSpreadOf(hgb) ?? spread([0]))).toBe(false);
+    expect(hasSpread(seedSpreadOf(gcn) ?? spread([0]))).toBe(true);
+    expect(spreadSeeds([run("zscore", 0.1633), hgb, gcn])).toEqual([42, 43, 44, 45, 46]);
+    expect(spreadSeeds([hgb, learnedRun("mlp", 0.3, 0.5, { seedSpread: spread([0.3], { seeds: [7], reportedSeed: 7 }) })])).toBeNull();
+    expect(spreadSeeds([run("zscore", 0.1633)])).toBeNull();
+  });
+});
+
+describe("excerpt of two start sets", () => {
+  function node(id: string, overrides: Partial<NetNode>): NetNode {
+    return {
+      id,
+      x: 0,
+      y: 0,
+      label: "unknown",
+      timeStep: 22,
+      scoreZscore: 1,
+      scoreIforest: 0.5,
+      scoreGnn: 0,
+      seedRank: null,
+      seedRankGnn: null,
+      hop: null,
+      hopGnn: null,
+      inDegree: 0,
+      outDegree: 0,
+      ...overrides,
+    };
+  }
+
+  const nodes = [
+    node("a", { hop: 0, seedRank: 1, hopGnn: 0, seedRankGnn: 1 }),
+    node("b", { hop: 0, seedRank: 2 }),
+    node("c", { hop: 1, hopGnn: 1 }),
+    node("d", { hop: 2 }),
+    node("e", { hopGnn: 0, seedRankGnn: 2 }),
+    node("f", { hopGnn: 2 }),
+  ];
+
+  it("counts both neighbourhoods, their overlap and the shared start nodes by hand", () => {
+    expect(excerptCounts(nodes)).toEqual({ total: 6, iforest: 4, gnn: 4, both: 2, sharedSeeds: 1 });
+  });
+
+  it("lists the neighbours of a start set without its start nodes", () => {
+    expect(neighbourhoodNodes(nodes, "iforest").map((entry) => entry.id)).toEqual(["c", "d"]);
+    expect(neighbourhoodNodes(nodes, "gnn").map((entry) => entry.id)).toEqual(["c", "f"]);
   });
 });

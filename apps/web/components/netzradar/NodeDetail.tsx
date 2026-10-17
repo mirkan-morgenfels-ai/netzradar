@@ -1,16 +1,29 @@
 "use client";
 
 import { useEffect, useRef, type ReactNode } from "react";
-import { formatDecimal, formatInteger, LABEL_PHRASE } from "@/lib/netzradar/format";
-import type { NetNode } from "@/lib/netzradar/types";
+import { formatDecimal, formatInteger, LABEL_PHRASE, seedSetScoreText } from "@/lib/netzradar/format";
+import { hopOf, seedRankOf } from "@/lib/netzradar/graph";
+import type { NetNode, SeedSet } from "@/lib/netzradar/types";
 import { NodeSymbol } from "./NodeSymbol";
 
 export interface NodeDetailProps {
   node: NetNode | null;
   neighbors: readonly NetNode[];
-  seedCount: number;
+  seedCounts: Record<SeedSet, number>;
+  hops: number;
   gnnLabel: string | null;
   onSelect: (id: string | null) => void;
+}
+
+function rankText(node: NetNode, set: SeedSet, count: number): ReactNode {
+  const rank = seedRankOf(node, set);
+  return rank === null ? <span className="text-slate">kein Startknoten</span> : `${rank} von ${count}`;
+}
+
+function hopText(node: NetNode, set: SeedSet, hops: number): ReactNode {
+  const hop = hopOf(node, set);
+  if (hop === null) return <span className="text-slate">mehr als {hops} Kanten</span>;
+  return hop === 1 ? "1 Kante" : `${hop} Kanten`;
 }
 
 function Row({ term, children }: { term: string; children: ReactNode }) {
@@ -31,7 +44,8 @@ function ScoreRow({ term, children }: { term: string; children: ReactNode }) {
   );
 }
 
-export function NodeDetail({ node, neighbors, seedCount, gnnLabel, onSelect }: NodeDetailProps) {
+export function NodeDetail({ node, neighbors, seedCounts, hops, gnnLabel, onSelect }: NodeDetailProps) {
+  const sets: SeedSet[] = gnnLabel === null ? ["iforest"] : ["iforest", "gnn"];
   const titleRef = useRef<HTMLHeadingElement>(null);
   const focusTitle = useRef(false);
 
@@ -112,7 +126,8 @@ export function NodeDetail({ node, neighbors, seedCount, gnnLabel, onSelect }: N
             {node.scoreGnn === null ? null : (
               <p className="mt-3 text-xs leading-relaxed text-slate">
                 Der GNN-Score ist die Differenz der beiden Ausgaben des Netzes (Logit für Label illegal minus Logit für
-                Label legal), keine Wahrscheinlichkeit. Je höher der Score, desto weiter oben steht der Knoten in der Rangfolge.
+                Label legal), keine Wahrscheinlichkeit, und 0 ist keine kalibrierte Schwelle. Je höher der Score, desto weiter
+                oben steht der Knoten in der Rangfolge.
               </p>
             )}
             <p className="eyebrow mt-6">Lage im Netz</p>
@@ -121,14 +136,20 @@ export function NodeDetail({ node, neighbors, seedCount, gnnLabel, onSelect }: N
               <Row term="Eingangsgrad / Ausgangsgrad">
                 {formatInteger(node.inDegree)} / {formatInteger(node.outDegree)}
               </Row>
-              <Row term="Rang unter den Startknoten">
-                {node.seedRank === null ? (
-                  <span className="text-slate">kein Startknoten</span>
-                ) : (
-                  `${node.seedRank} von ${seedCount}`
-                )}
-              </Row>
-              <Row term="Kanten bis zum nächsten Startknoten">{node.hop}</Row>
+            </dl>
+            <p className="eyebrow mt-6">Startknoten</p>
+            <dl className="mt-3" data-testid="node-detail-seeds">
+              {sets.flatMap((set) => {
+                const score = seedSetScoreText(set, gnnLabel ?? "");
+                return [
+                  <Row key={`rank-${set}`} term={`Rang nach ${score}`}>
+                    {rankText(node, set, seedCounts[set])}
+                  </Row>,
+                  <Row key={`hop-${set}`} term="Abstand zu diesen Startknoten">
+                    {hopText(node, set, hops)}
+                  </Row>,
+                ];
+              })}
             </dl>
             <div className="mt-6 border-t border-line pt-5">
               <h4 className="eyebrow">Nachbarn im Ausschnitt ({formatInteger(neighbors.length)})</h4>

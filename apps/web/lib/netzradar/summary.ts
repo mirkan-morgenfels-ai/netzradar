@@ -1,9 +1,12 @@
 import { formatPlainNumber } from "./format";
 import {
   BASELINE_METHODS,
+  EDGELESS_METHODS,
   GRAPH_METHODS,
   LEARNED_METHODS,
   METHODS,
+  NEURAL_METHODS,
+  type BoostingTraining,
   type EvaluationInfo,
   type GraphMethod,
   type JsonObject,
@@ -12,8 +15,12 @@ import {
   type LearnedMethod,
   type Method,
   type NetNode,
+  type NeuralMethod,
+  type NeuralTraining,
   type Run,
   type SearchCandidate,
+  type SeedSet,
+  type SeedSpread,
   type Training,
 } from "./types";
 
@@ -25,8 +32,38 @@ export function isLearnedMethod(method: Method): method is LearnedMethod {
   return (LEARNED_METHODS as readonly Method[]).includes(method);
 }
 
+export function isNeuralMethod(method: Method): method is NeuralMethod {
+  return (NEURAL_METHODS as readonly Method[]).includes(method);
+}
+
 export function isGraphMethod(method: Method): method is GraphMethod {
   return (GRAPH_METHODS as readonly Method[]).includes(method);
+}
+
+export function neuralTraining(run: Run | null): NeuralTraining | null {
+  return run?.training?.kind === "neural" ? run.training : null;
+}
+
+export function boostingTraining(run: Run | null): BoostingTraining | null {
+  return run?.training?.kind === "boosting" ? run.training : null;
+}
+
+export function seedSpreadOf(run: Run): SeedSpread | null {
+  return run.training?.seedSpread ?? null;
+}
+
+export function spreadSeeds(runs: readonly Run[]): number[] | null {
+  const lists = runs.flatMap((run) => {
+    const spread = seedSpreadOf(run);
+    return spread ? [spread.seeds.join(",")] : [];
+  });
+  const [first] = lists;
+  if (first === undefined || lists.some((entry) => entry !== first)) return null;
+  return first.split(",").map(Number);
+}
+
+export function hasSpread(spread: SeedSpread): boolean {
+  return spread.max > spread.min;
 }
 
 export function findRun(runs: readonly Run[], method: Method): Run | null {
@@ -62,6 +99,14 @@ export function bestBaseline(runs: readonly Run[]): Run | null {
   return bestRunAmong(runs, BASELINE_METHODS);
 }
 
+export function edgelessRuns(runs: readonly Run[]): Run[] {
+  return runs.filter((run) => (EDGELESS_METHODS as readonly Method[]).includes(run.method));
+}
+
+export function bestEdgeless(runs: readonly Run[]): Run | null {
+  return bestRunAmong(runs, EDGELESS_METHODS);
+}
+
 export function comparisonMargin(evaluation: EvaluationInfo): number {
   return evaluation.randomPrAucQ95 - evaluation.randomPrAucExpected;
 }
@@ -83,25 +128,30 @@ export function averagedSeparation(shift: number, neighbours: number, otherClass
   return (shift * (1 + neighbours * (1 - 2 * otherClassShare))) / Math.sqrt(neighbours + 1);
 }
 
-export function selectedCandidate(training: Training): SearchCandidate | null {
-  return training.search.find((candidate) => candidate.selected) ?? null;
+export function selectedCandidate<T extends Training>(training: T): T["search"][number] | null {
+  const search: ReadonlyArray<T["search"][number]> = training.search;
+  return search.find((candidate) => candidate.selected) ?? null;
 }
 
-export function reachedEpochLimit(training: Training): boolean {
+export function reachedEpochLimit(training: NeuralTraining): boolean {
   return training.selectedEpoch >= training.maxEpochs;
+}
+
+export function reachedIterationLimit(training: BoostingTraining): boolean {
+  return training.selectedIteration >= training.maxIter;
 }
 
 export function searchWeight(runs: readonly Run[], rule: SearchCandidate["positiveWeightRule"]): number | null {
   for (const run of runs) {
-    const candidate = run.training?.search.find((entry) => entry.positiveWeightRule === rule);
+    const candidate = neuralTraining(run)?.search.find((entry) => entry.positiveWeightRule === rule);
     if (candidate) return candidate.positiveWeight;
   }
   return null;
 }
 
 export function finalTrainRatioWeight(runs: readonly Run[]): number | null {
-  const run = runs.find((entry) => entry.training?.positiveWeightRule === "trainRatio");
-  return run?.training?.positiveWeight ?? null;
+  const run = runs.find((entry) => neuralTraining(entry)?.positiveWeightRule === "trainRatio");
+  return neuralTraining(run ?? null)?.positiveWeight ?? null;
 }
 
 export interface MeasuredRow {
@@ -194,6 +244,26 @@ export function featureNames(run: Run): string[] {
 export function illicitShareAmongLabelled(counts: LabelCounts): number {
   const labelled = counts.illicit + counts.licit;
   return labelled > 0 ? counts.illicit / labelled : 0;
+}
+
+export interface ExcerptCounts {
+  total: number;
+  iforest: number;
+  gnn: number;
+  both: number;
+  sharedSeeds: number;
+}
+
+export function excerptCounts(nodes: readonly NetNode[]): ExcerptCounts {
+  const iforest = nodes.filter((node) => node.hop !== null).length;
+  const gnn = nodes.filter((node) => node.hopGnn !== null).length;
+  const both = nodes.filter((node) => node.hop !== null && node.hopGnn !== null).length;
+  const sharedSeeds = nodes.filter((node) => node.seedRank !== null && node.seedRankGnn !== null).length;
+  return { total: nodes.length, iforest, gnn, both, sharedSeeds };
+}
+
+export function neighbourhoodNodes(nodes: readonly NetNode[], set: SeedSet): NetNode[] {
+  return nodes.filter((node) => (set === "gnn" ? node.hopGnn !== null && node.seedRankGnn === null : node.hop !== null && node.seedRank === null));
 }
 
 export function meanDegree(nodes: readonly NetNode[]): number {

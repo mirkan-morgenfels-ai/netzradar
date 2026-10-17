@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "method": "mlp",
   "displayName": "MLP ohne Kanten (2 Schichten)",
   "featureSet": "local+graph",

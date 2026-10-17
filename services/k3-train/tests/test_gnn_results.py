@@ -61,11 +61,17 @@ def test_seed_spread_goes_before_the_environment() -> None:
     assert "seedSpread" not in hyperparameters
 
 
-def test_seed_spread_only_in_the_run_log() -> None:
+def test_seed_spread_goes_into_published_runs_and_logs() -> None:
     output = fake_output([gnn_run("gcn", 0.3)])
     log = output.run_logs()[0]
+    published = output.runs_with_spread()[0]
     assert log["hyperparameters"]["seedSpread"] == SPREAD
+    assert published["hyperparameters"] == log["hyperparameters"]
+    assert list(published["hyperparameters"])[-2:] == ["seedSpread", "environment"]
     assert "seedSpread" not in output.runs[0]["hyperparameters"]
+    output.seed_spread = {}
+    with pytest.raises(ValueError, match="Seed-Streuung fehlt"):
+        output.runs_with_spread()
 
 
 def test_score_gnn_method_uses_the_validation_and_ignores_the_mlp() -> None:
@@ -115,8 +121,8 @@ def test_save_and_load(tmp_path: Path) -> None:
 
 
 def test_runs_are_ordered_like_the_methods() -> None:
-    runs = [{"method": "mlp"}, {"method": "zscore"}, {"method": "gcn"}]
-    assert [run["method"] for run in ordered_runs(runs)] == ["zscore", "gcn", "mlp"]
+    runs = [{"method": "mlp"}, {"method": "zscore"}, {"method": "gcn"}, {"method": "hgb"}]
+    assert [run["method"] for run in ordered_runs(runs)] == ["zscore", "hgb", "gcn", "mlp"]
     with pytest.raises(ValueError, match="doppelt"):
         ordered_runs([{"method": "gcn"}, {"method": "gcn"}])
     with pytest.raises(ValueError, match="Unbekannte"):
@@ -132,4 +138,4 @@ def test_runs_are_ordered_like_the_methods() -> None:
     )
     payload = metrics_payload(baseline, "", [{"method": "graphsage"}])
     assert [run["method"] for run in payload["runs"]] == ["zscore", "iforest", "graphsage"]
-    assert payload["schemaVersion"] == 3
+    assert payload["schemaVersion"] == 4

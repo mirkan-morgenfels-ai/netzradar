@@ -47,7 +47,7 @@ export function ScrollRegion({ labelledBy, label, className, testId, hint, child
           data-testid={testId}
           data-overflowing={overflowing ? "true" : "false"}
           onScroll={measure}
-          className={cx("overflow-x-auto", className)}
+          className={cx("relative overflow-x-auto", className)}
         >
           {children}
         </div>

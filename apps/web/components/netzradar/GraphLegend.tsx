@@ -1,4 +1,5 @@
 import { CHART_COLORS } from "@portfolio/charts/theme";
+import { cx } from "@portfolio/ui";
 import { LABEL_TEXT } from "@/lib/netzradar/format";
 import type { NodeLabel } from "@/lib/netzradar/types";
 import { NodeSymbol } from "./NodeSymbol";
@@ -9,7 +10,7 @@ const LABEL_ENTRIES: ReadonlyArray<{ label: NodeLabel; shape: string }> = [
   { label: "unknown", shape: "hohl" },
 ];
 
-export function GraphLegend() {
+export function GraphLegend({ twoSeedSets }: { twoSeedSets: boolean }) {
   return (
     <div
       className="rounded-2xl border border-line bg-surface px-5 py-4 text-sm shadow-card sm:px-6"
@@ -26,13 +27,25 @@ export function GraphLegend() {
             </li>
           ))}
         </ul>
-        <ul className="flex flex-col gap-2 border-line text-xs text-slate lg:shrink-0 lg:border-l lg:pl-8">
+        <ul
+          className={cx(
+            "flex flex-col gap-2 border-line text-xs leading-snug text-slate lg:border-l lg:pl-8",
+            twoSeedSets ? "lg:max-w-[22rem]" : "lg:shrink-0",
+          )}
+        >
           <li className="flex items-center gap-2.5">
             <svg width="30" height="18" viewBox="0 0 30 18" aria-hidden="true" focusable="false" className="shrink-0">
-              <circle cx="5" cy="9" r="3" fill="none" stroke={CHART_COLORS.slate} strokeWidth="1.5" />
-              <circle cx="20" cy="9" r="8" fill="none" stroke={CHART_COLORS.slate} strokeWidth="1.5" />
+              {twoSeedSets ? (
+                <circle cx="2.5" cy="9" r="1.75" fill="none" stroke={CHART_COLORS.slate} strokeWidth="1.25" />
+              ) : null}
+              <circle cx={twoSeedSets ? 9 : 5} cy="9" r="3" fill="none" stroke={CHART_COLORS.slate} strokeWidth="1.5" />
+              <circle cx="21" cy="9" r="8" fill="none" stroke={CHART_COLORS.slate} strokeWidth="1.5" />
             </svg>
-            großer Kreis: Startknoten, klein: Nachbar im Abstand 1 oder 2
+            <span>
+              {twoSeedSets
+                ? "großer Kreis: Startknoten der gewählten Startmenge; klein: Nachbar im Abstand 1 oder 2; am kleinsten: nur über die andere Startmenge im Ausschnitt"
+                : "großer Kreis: Startknoten, klein: Nachbar im Abstand 1 oder 2"}
+            </span>
           </li>
           <li className="flex items-center gap-2.5">
             <svg width="30" height="10" viewBox="0 0 30 10" aria-hidden="true" focusable="false" className="shrink-0">

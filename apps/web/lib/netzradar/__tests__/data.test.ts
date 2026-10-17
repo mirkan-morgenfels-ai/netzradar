@@ -84,15 +84,46 @@ function searchOf(input: RawExport, method: string): JsonObject[] {
   );
 }
 
-const LEARNED = ["gcn", "graphsage", "mlp"];
+const LEARNED = ["hgb", "gcn", "graphsage", "mlp"];
+const GRAPH = ["gcn", "graphsage"];
+
+function nodeIndex(input: RawExport, predicate: (node: JsonObject) => boolean): number {
+  const index = arrayAt(input.nodes, ["nodes"]).findIndex((_, position) => predicate(objectAt(input.nodes, ["nodes", position])));
+  if (index < 0) throw new Error("no matching node");
+  return index;
+}
+
+function withoutGnnNodes(input: RawExport): void {
+  const nodesFile = objectAt(input.nodes, []);
+  objectAt(input.nodes, ["selection"]).scoreFieldGnn = null;
+  nodesFile.scoreGnnMethod = null;
+  const kept = arrayAt(input.nodes, ["nodes"]).filter((_, index) => walk(input.nodes, ["nodes", index, "hop"]) !== null);
+  kept.forEach((_, index) => {
+    const node = objectAt(kept, [index]);
+    node.scoreGnn = null;
+    node.seedRankGnn = null;
+    node.hopGnn = null;
+  });
+  nodesFile.nodes = kept;
+  const ids = new Set(kept.map((_, index) => stringAt(kept, [index, "id"])));
+  objectAt(input.edges, []).edges = arrayAt(input.edges, ["edges"]).filter(
+    (_, index) => ids.has(stringAt(input.edges, ["edges", index, "source"])) && ids.has(stringAt(input.edges, ["edges", index, "target"])),
+  );
+}
+
+function withoutGraphRuns(input: RawExport): void {
+  objectAt(input.metrics, []).runs = arrayAt(input.metrics, ["runs"]).filter(
+    (_, index) => !GRAPH.includes(stringAt(input.metrics, ["runs", index, "method"])),
+  );
+}
 
 describe("parseNetzRadarData with the real export", () => {
   it("accepts the files in data/k3", () => {
     const raw = fresh();
     const parsed = parseNetzRadarData(raw);
-    expect(parsed.metrics.schemaVersion).toBe(3);
-    expect(parsed.nodes.schemaVersion).toBe(3);
-    expect(parsed.edges.schemaVersion).toBe(3);
+    expect(parsed.metrics.schemaVersion).toBe(4);
+    expect(parsed.nodes.schemaVersion).toBe(4);
+    expect(parsed.edges.schemaVersion).toBe(4);
     expect(parsed.nodes.nodes).toHaveLength(arrayAt(raw.nodes, ["nodes"]).length);
     expect(parsed.edges.edges).toHaveLength(arrayAt(raw.edges, ["edges"]).length);
     expect(parsed.metrics.runs.map((run) => run.method)).toEqual(
@@ -101,7 +132,7 @@ describe("parseNetzRadarData with the real export", () => {
     expect(parsed.metrics.split.crossSplitEdges).toBe(0);
   });
 
-  it("reads the learned runs with their search and the GNN score", () => {
+  it("reads the learned runs with their search, their seed spread and the GNN score", () => {
     const raw = fresh();
     const parsed = parseNetzRadarData(raw);
     for (const run of parsed.metrics.runs) {
@@ -109,10 +140,15 @@ describe("parseNetzRadarData with the real export", () => {
         expect(run.training).toBeNull();
         continue;
       }
-      expect(run.training).not.toBeNull();
-      expect(run.training?.search.filter((candidate) => candidate.selected)).toHaveLength(1);
-      expect(run.training?.finalFitSteps).toEqual(parsed.metrics.split.train);
-      expect(run.training?.validationSteps).toEqual(parsed.metrics.split.validation);
+      const training = run.training;
+      if (training === null) throw new Error(`no training for ${run.method}`);
+      expect(training.kind).toBe(run.method === "hgb" ? "boosting" : "neural");
+      const search: ReadonlyArray<{ selected: boolean }> = training.search;
+      expect(search.filter((candidate) => candidate.selected)).toHaveLength(1);
+      expect(training.finalFitSteps).toEqual(parsed.metrics.split.train);
+      expect(training.validationSteps).toEqual(parsed.metrics.split.validation);
+      expect(training.seedSpread.reportedSeed).toBe(run.seed);
+      expect(training.seedSpread.prAuc[training.seedSpread.seeds.indexOf(run.seed)]).toBe(run.prAuc);
     }
     expect(parsed.nodes.scoreGnnMethod).toBe(walk(raw.nodes, ["scoreGnnMethod"]));
     if (parsed.nodes.scoreGnnMethod !== null) {
@@ -124,13 +160,35 @@ describe("parseNetzRadarData with the real export", () => {
     expect(netzRadarData).toEqual(parseNetzRadarData(fresh()));
   });
 
-  it("keeps every start node rank exactly once", () => {
-    const ranks = netzRadarData.nodes.nodes
-      .map((node) => node.seedRank)
-      .filter((rank): rank is number => rank !== null)
-      .sort((a, b) => a - b);
-    expect(ranks).toEqual(Array.from({ length: ranks.length }, (_, index) => index + 1));
-    expect(ranks.length).toBeLessThanOrEqual(netzRadarData.nodes.selection.seeds);
+  it("keeps every start node rank of both start sets exactly once", () => {
+    for (const key of ["seedRank", "seedRankGnn"] as const) {
+      const ranks = netzRadarData.nodes.nodes
+        .map((node) => node[key])
+        .filter((rank): rank is number => rank !== null)
+        .sort((a, b) => a - b);
+      expect(ranks).toEqual(Array.from({ length: netzRadarData.nodes.selection.seeds }, (_, index) => index + 1));
+    }
+  });
+
+  it("reads the gradient boosting run of contract 4", () => {
+    const run = netzRadarData.metrics.runs.find((entry) => entry.method === "hgb");
+    const training = run?.training;
+    if (!run || training?.kind !== "boosting") throw new Error("no boosting run");
+    expect(netzRadarData.metrics.runs.map((entry) => entry.method)).toEqual(["zscore", "iforest", "hgb", "gcn", "graphsage", "mlp"]);
+    expect(training.search).toHaveLength(8);
+    expect(training.selectedIteration).toBeLessThanOrEqual(training.maxIter);
+    expect(training.randomState).toBe(run.seed);
+    expect(training.edges).toBe("none");
+    expect(training.seedSpread.min).toBe(training.seedSpread.max);
+  });
+
+  it("reads both distances and keeps nodes reached only through the GNN start nodes", () => {
+    const nodes = netzRadarData.nodes.nodes;
+    expect(netzRadarData.nodes.selection.scoreFieldGnn).toBe("scoreGnn");
+    expect(nodes.every((node) => node.hop !== null || node.hopGnn !== null)).toBe(true);
+    expect(nodes.every((node) => (node.seedRank !== null) === (node.hop === 0))).toBe(true);
+    expect(nodes.every((node) => (node.seedRankGnn !== null) === (node.hopGnn === 0))).toBe(true);
+    expect(nodes.some((node) => node.hop === null)).toBe(true);
   });
 });
 
@@ -192,7 +250,7 @@ describe("parseNetzRadarData rejects broken variants", () => {
 
   it("rejects a start rank on a node outside hop 0", () => {
     const input = fresh();
-    const index = arrayAt(input.nodes, ["nodes"]).findIndex((_, position) => numberAt(input.nodes, ["nodes", position, "hop"]) === 1);
+    const index = nodeIndex(input, (node) => node.hop === 1);
     objectAt(input.nodes, ["nodes", index]).seedRank = 1;
     expectSchemaError(input, new RegExp(`nodes\\.nodes\\[${index}\\]\\.seedRank`));
   });
@@ -244,14 +302,14 @@ describe("parseNetzRadarData rejects broken variants", () => {
 
   it("rejects the previous schema version", () => {
     const input = fresh();
-    objectAt(input.metrics, []).schemaVersion = 2;
-    expectSchemaError(input, /metrics\.schemaVersion: 3 erwartet/);
+    objectAt(input.metrics, []).schemaVersion = 3;
+    expectSchemaError(input, /metrics\.schemaVersion: 4 erwartet/);
     const nodesInput = fresh();
-    objectAt(nodesInput.nodes, []).schemaVersion = 2;
-    expectSchemaError(nodesInput, /nodes\.schemaVersion: 3 erwartet/);
+    objectAt(nodesInput.nodes, []).schemaVersion = 3;
+    expectSchemaError(nodesInput, /nodes\.schemaVersion: 4 erwartet/);
     const edgesInput = fresh();
-    objectAt(edgesInput.edges, []).schemaVersion = 2;
-    expectSchemaError(edgesInput, /edges\.schemaVersion: 3 erwartet/);
+    objectAt(edgesInput.edges, []).schemaVersion = 3;
+    expectSchemaError(edgesInput, /edges\.schemaVersion: 4 erwartet/);
   });
 
   it("rejects a gap in the start node ranks", () => {
@@ -259,7 +317,7 @@ describe("parseNetzRadarData rejects broken variants", () => {
     const nodes = arrayAt(input.nodes, ["nodes"]);
     const index = nodes.findIndex((_, position) => walk(input.nodes, ["nodes", position, "seedRank"]) === 7);
     nodes.splice(index, 1);
-    expectSchemaError(input, /nodes\.nodes: Startknoten-Ränge müssen lückenlos 1 bis 49 sein/);
+    expectSchemaError(input, /nodes\.nodes: Startknoten-Ränge seedRank müssen lückenlos 1 bis 49 sein/);
   });
 
   it("rejects an expected random PR-AUC that does not match the test counts", () => {
@@ -330,16 +388,25 @@ describe("parseNetzRadarData rejects broken GNN results", () => {
   it("rejects GNN scores while scoreGnnMethod is null", () => {
     const input = fresh();
     objectAt(input.nodes, []).scoreGnnMethod = null;
+    expectSchemaError(input, /nodes\.selection\.scoreFieldGnn: null erwartet, weil scoreGnnMethod null ist/);
+    objectAt(input.nodes, ["selection"]).scoreFieldGnn = null;
     expectSchemaError(input, /nodes\.nodes\[0\]\.scoreGnn: null erwartet/);
   });
 
   it("rejects scoreGnnMethod null while GNN runs exist", () => {
     const input = fresh();
-    objectAt(input.nodes, []).scoreGnnMethod = null;
-    arrayAt(input.nodes, ["nodes"]).forEach((_, index) => {
-      objectAt(input.nodes, ["nodes", index]).scoreGnn = null;
-    });
+    withoutGnnNodes(input);
     expectSchemaError(input, /nodes\.scoreGnnMethod: "(gcn|graphsage)" erwartet/);
+  });
+
+  it("accepts a nodes file without GNN fields when no graph run exists", () => {
+    const input = fresh();
+    withoutGnnNodes(input);
+    withoutGraphRuns(input);
+    const parsed = parseNetzRadarData(input);
+    expect(parsed.nodes.scoreGnnMethod).toBeNull();
+    expect(parsed.nodes.selection.scoreFieldGnn).toBeNull();
+    expect(parsed.nodes.nodes.every((node) => node.seedRankGnn === null && node.hopGnn === null && node.hop !== null)).toBe(true);
   });
 
   it("rejects the graph method with the lower validation PR-AUC", () => {
@@ -351,10 +418,7 @@ describe("parseNetzRadarData rejects broken GNN results", () => {
 
   it("rejects scoreGnnMethod without graph runs", () => {
     const input = fresh();
-    const metrics = objectAt(input.metrics, []);
-    metrics.runs = arrayAt(input.metrics, ["runs"]).filter(
-      (_, index) => !LEARNED.includes(stringAt(input.metrics, ["runs", index, "method"])),
-    );
+    withoutGraphRuns(input);
     expectSchemaError(input, /nodes\.scoreGnnMethod: null erwartet/);
   });
 
@@ -364,10 +428,16 @@ describe("parseNetzRadarData rejects broken GNN results", () => {
     expectSchemaError(input, new RegExp(`metrics\\.runs\\[${runIndex(input, "gcn")}\\]\\.hyperparameters\\.search: Feld fehlt`));
   });
 
-  it("rejects the seed spread in metrics.json, where it does not belong", () => {
+  it("rejects a seed spread on a baseline without random component", () => {
     const input = fresh();
-    hyperparameters(input, "graphsage").seedSpread = { seeds: [42], prAuc: [0.9] };
-    expectSchemaError(input, /hyperparameters\.seedSpread: unbekanntes Feld/);
+    hyperparameters(input, "zscore").seedSpread = structuredClone(hyperparameters(input, "hgb").seedSpread ?? null);
+    expectSchemaError(input, /runs\[0\]\.hyperparameters\.seedSpread: nur bei gelernten Verfahren erwartet/);
+  });
+
+  it("rejects a learned run without seed spread", () => {
+    const input = fresh();
+    delete hyperparameters(input, "graphsage").seedSpread;
+    expectSchemaError(input, /hyperparameters\.seedSpread: Feld fehlt/);
   });
 
   it("rejects two selected candidates", () => {
@@ -490,7 +560,8 @@ describe("parseNetzRadarData rejects settings the page text relies on", () => {
   it("accepts float32 as the second documented dtype", () => {
     const input = fresh();
     hyperparameters(input, "mlp").dtype = "float32";
-    expect(parseNetzRadarData(input).metrics.runs.find((run) => run.method === "mlp")?.training?.dtype).toBe("float32");
+    const training = parseNetzRadarData(input).metrics.runs.find((run) => run.method === "mlp")?.training;
+    expect(training?.kind === "neural" ? training.dtype : null).toBe("float32");
   });
 
   const fixedScaling: Array<[string, JsonValue, RegExp]> = [
@@ -546,5 +617,208 @@ describe("parseNetzRadarData reports errors", () => {
     }
     expect(caught).toBeInstanceOf(NetzRadarSchemaError);
     expect((caught as NetzRadarSchemaError).path).toBe("metrics.generatedAt");
+  });
+});
+
+describe("parseNetzRadarData checks the seed spread of contract 4", () => {
+  function spreadOf(input: RawExport, method: string): JsonObject {
+    return objectAt(hyperparameters(input, method), ["seedSpread"]);
+  }
+
+  it("rejects a reported seed other than the seed of the run", () => {
+    const input = fresh();
+    spreadOf(input, "gcn").reportedSeed = 43;
+    expectSchemaError(input, /hyperparameters\.seedSpread\.reportedSeed: Seed 42 des Runs erwartet/);
+  });
+
+  it("rejects a value at the reported seed that differs from prAuc of the run: 0,5 against 0,8941", () => {
+    const input = fresh();
+    const spread = spreadOf(input, "graphsage");
+    arrayAt(spread, ["prAuc"])[0] = 0.5;
+    spread.min = 0.5;
+    spread.max = 0.8915;
+    spread.mean = 0.8054;
+    expectSchemaError(input, /hyperparameters\.seedSpread\.prAuc\[0\]: Wert 0\.5 weicht von prAuc 0\.8941 des Runs ab/);
+  });
+
+  it("rejects min and max that are not the smallest and largest value", () => {
+    const input = fresh();
+    spreadOf(input, "mlp").min = 0.3765;
+    expectSchemaError(input, /seedSpread\.min: kleinster Wert 0\.3418 erwartet/);
+    const other = fresh();
+    spreadOf(other, "gcn").max = 0.8;
+    expectSchemaError(other, /seedSpread\.max: größter Wert 0\.8148 erwartet/);
+  });
+
+  it("rejects a mean outside [min, max] and a mean more than one rounding step from (0,7897 + 0,8148 + 0,8008 + 0,7947 + 0,8009) / 5 = 0,80018", () => {
+    const input = fresh();
+    spreadOf(input, "gcn").mean = 0.9;
+    expectSchemaError(input, /seedSpread\.mean: liegt nicht zwischen min und max/);
+    const other = fresh();
+    spreadOf(other, "gcn").mean = 0.8004;
+    expectSchemaError(other, /seedSpread\.mean: Wert 0\.8004 passt nicht zu 0\.8002/);
+  });
+
+  it("accepts a mean one rounding step away from the exported one: |0,8001 − 0,80018| ≤ 0,0001", () => {
+    const input = fresh();
+    spreadOf(input, "gcn").mean = 0.8001;
+    expect(() => parseNetzRadarData(input)).not.toThrow();
+  });
+
+  it("rejects duplicate seeds and a value list of another length", () => {
+    const input = fresh();
+    arrayAt(spreadOf(input, "mlp"), ["seeds"])[1] = 42;
+    expectSchemaError(input, /seedSpread\.seeds: Seeds doppelt/);
+    const other = fresh();
+    arrayAt(spreadOf(other, "mlp"), ["prAuc"]).pop();
+    expectSchemaError(other, /seedSpread\.prAuc: 5 Werte erwartet, gefunden 4/);
+  });
+});
+
+describe("parseNetzRadarData rejects broken gradient boosting runs", () => {
+  const fixedBoosting: Array<[string, JsonValue, RegExp]> = [
+    ["estimator", "RandomForestClassifier", /hyperparameters\.estimator: "HistGradientBoostingClassifier" erwartet/],
+    ["loss", "exponential", /hyperparameters\.loss: "log_loss" erwartet/],
+    ["score", "probabilityIllicit", /hyperparameters\.score: "logOddsIllicit" erwartet/],
+    ["learningRate", 0.05, /hyperparameters\.learningRate: 0\.1 erwartet/],
+    ["minSamplesLeaf", 10, /hyperparameters\.minSamplesLeaf: 20 erwartet/],
+    ["l2Regularization", 1, /hyperparameters\.l2Regularization: 0 erwartet/],
+    ["maxBins", 128, /hyperparameters\.maxBins: 255 erwartet/],
+    ["maxFeatures", 0.5, /hyperparameters\.maxFeatures: 1 erwartet/],
+    ["edges", "undirected", /hyperparameters\.edges: "none" erwartet/],
+    ["earlyStopping", true, /hyperparameters\.earlyStopping: false erwartet/],
+    ["randomState", 7, /hyperparameters\.randomState: Seed 42 des Runs erwartet/],
+  ];
+
+  it.each(fixedBoosting)("rejects %s = %j", (key, value, pattern) => {
+    const input = fresh();
+    hyperparameters(input, "hgb")[key] = value;
+    expectSchemaError(input, pattern);
+  });
+
+  it("rejects a tree count above maxIter or other than the best iteration of the selection", () => {
+    const input = fresh();
+    hyperparameters(input, "hgb").selectedIteration = 301;
+    expectSchemaError(input, /hyperparameters\.selectedIteration: Wert 301 liegt nicht in \[1, 300\]/);
+    const other = fresh();
+    hyperparameters(other, "hgb").selectedIteration = 129;
+    expectSchemaError(other, /hyperparameters\.selectedIteration: passt nicht zur besten Iteration/);
+  });
+
+  it("rejects a best iteration of a candidate above maxIter", () => {
+    const input = fresh();
+    const candidate = searchOf(input, "hgb").find((entry) => entry.selected === false);
+    if (!candidate) throw new Error("no unselected candidate");
+    candidate.bestIteration = 301;
+    expectSchemaError(input, /bestIteration: Wert 301 liegt nicht in \[1, 300\]/);
+  });
+
+  it("rejects a leaf count other than the one of the selected candidate", () => {
+    const input = fresh();
+    hyperparameters(input, "hgb").maxLeafNodes = 31;
+    expectSchemaError(input, /hyperparameters\.maxLeafNodes: passt nicht zum gewählten Kandidaten/);
+  });
+
+  it("rejects two selected candidates and a later candidate on a tie", () => {
+    const input = fresh();
+    for (const candidate of searchOf(input, "hgb")) candidate.selected = true;
+    expectSchemaError(input, /hyperparameters\.search: genau ein gewählter Kandidat erwartet, gefunden 8/);
+    const other = fresh();
+    const search = searchOf(other, "hgb");
+    const selected = search.find((candidate) => candidate.selected === true);
+    const first = search[0];
+    if (!selected || !first || first === selected) throw new Error("selected candidate is the first one");
+    first.validationPrAuc = numberAt(selected, ["validationPrAuc"]);
+    expectSchemaError(other, /hyperparameters\.search\[0\]\.validationPrAuc: gleich hoch wie beim gewählten Kandidaten/);
+  });
+
+  it("rejects a candidate listed twice", () => {
+    const input = fresh();
+    const search = arrayAt(hyperparameters(input, "hgb"), ["search"]);
+    search[1] = structuredClone(search[0] ?? null);
+    expectSchemaError(input, /hyperparameters\.search\[1\]: Kandidat local trainRatio 8\.3409 7 doppelt/);
+  });
+
+  it("rejects the environment of the neural runs", () => {
+    const input = fresh();
+    hyperparameters(input, "hgb").environment = structuredClone(hyperparameters(input, "gcn").environment ?? null);
+    expectSchemaError(input, /hyperparameters\.environment\.scikitLearn: Feld fehlt/);
+  });
+
+  it("rejects neural keys in the gradient boosting run", () => {
+    const input = fresh();
+    hyperparameters(input, "hgb").selectedEpoch = 128;
+    expectSchemaError(input, /hyperparameters\.selectedEpoch: unbekanntes Feld/);
+  });
+
+  it("rejects a feature count that does not fit the feature set", () => {
+    const input = fresh();
+    const params = hyperparameters(input, "hgb");
+    params.features = arrayAt(params, ["features"]).slice(0, numberAt(input.metrics, ["dataset", "features"]));
+    expectSchemaError(input, /hyperparameters\.features: Merkmalszahl passt nicht zu featureSet local\+graph/);
+  });
+});
+
+describe("parseNetzRadarData checks both start sets in nodes.json", () => {
+  it("rejects a GNN start rank outside hop 0 of the GNN start set", () => {
+    const input = fresh();
+    const index = nodeIndex(input, (node) => node.hopGnn === 1);
+    objectAt(input.nodes, ["nodes", index]).seedRankGnn = 1;
+    expectSchemaError(input, new RegExp(`nodes\\.nodes\\[${index}\\]\\.seedRankGnn: Startknoten und Abstand 0 passen nicht zusammen`));
+  });
+
+  it("rejects a node without any distance", () => {
+    const input = fresh();
+    const index = nodeIndex(input, (node) => node.hop === null && node.hopGnn === 1);
+    objectAt(input.nodes, ["nodes", index]).hopGnn = null;
+    expectSchemaError(input, new RegExp(`nodes\\.nodes\\[${index}\\]: weder hop noch hopGnn gesetzt`));
+  });
+
+  it("rejects a start rank on a node reached only through the other start set", () => {
+    const input = fresh();
+    const index = nodeIndex(input, (node) => node.hop === null);
+    objectAt(input.nodes, ["nodes", index]).seedRank = 1;
+    expectSchemaError(input, new RegExp(`nodes\\.nodes\\[${index}\\]\\.seedRank: Startknoten und Abstand 0 passen nicht zusammen`));
+  });
+
+  it("rejects a GNN distance above the hop limit", () => {
+    const input = fresh();
+    const index = nodeIndex(input, (node) => node.hopGnn === 2);
+    objectAt(input.nodes, ["nodes", index]).hopGnn = 3;
+    expectSchemaError(input, new RegExp(`nodes\\.nodes\\[${index}\\]\\.hopGnn: einer von 0, 1, 2 erwartet`));
+  });
+
+  it("rejects a duplicate GNN start rank and a GNN start rank above the number of start nodes", () => {
+    const input = fresh();
+    const first = nodeIndex(input, (node) => node.seedRankGnn === 1);
+    const second = nodeIndex(input, (node) => node.seedRankGnn === 2);
+    objectAt(input.nodes, ["nodes", second]).seedRankGnn = 1;
+    expectSchemaError(input, new RegExp(`nodes\\.nodes\\[${Math.max(first, second)}\\]\\.seedRankGnn: Rang 1 doppelt`));
+    const other = fresh();
+    const index = nodeIndex(other, (node) => node.seedRankGnn === 50);
+    objectAt(other.nodes, ["nodes", index]).seedRankGnn = 51;
+    expectSchemaError(other, new RegExp(`nodes\\.nodes\\[${index}\\]\\.seedRankGnn: Wert 51 liegt nicht in \\[1, 50\\]`));
+  });
+
+  it("rejects a GNN start set with fewer than the selected number of start nodes", () => {
+    const input = fresh();
+    const index = nodeIndex(input, (node) => node.seedRankGnn === 50);
+    objectAt(input.nodes, ["nodes", index]).seedRankGnn = null;
+    objectAt(input.nodes, ["nodes", index]).hopGnn = 1;
+    expectSchemaError(input, /nodes\.nodes: 50 Startknoten mit seedRankGnn erwartet, gefunden 49/);
+  });
+
+  it("rejects another score field for the GNN start set", () => {
+    const input = fresh();
+    objectAt(input.nodes, ["selection"]).scoreFieldGnn = "scoreZscore";
+    expectSchemaError(input, /nodes\.selection\.scoreFieldGnn: "scoreGnn" erwartet/);
+  });
+
+  it("rejects GNN start fields while scoreGnnMethod is null", () => {
+    const input = fresh();
+    withoutGnnNodes(input);
+    withoutGraphRuns(input);
+    objectAt(input.nodes, ["nodes", 0]).hopGnn = 1;
+    expectSchemaError(input, /nodes\.nodes\[0\]\.hopGnn: null erwartet, weil scoreGnnMethod null ist/);
   });
 });

@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import pandas as pd
 
 SYNTHETIC_REFERENCE_STEPS = 30
+IBM_AML_MIN_STEPS = 4
 
 
 class SplitError(ValueError):
@@ -59,11 +60,28 @@ def synthetic_split(time_steps: int) -> TemporalSplit:
     )
 
 
+def ibm_aml_split(time_steps: int) -> TemporalSplit:
+    if time_steps < IBM_AML_MIN_STEPS:
+        raise SplitError(
+            f"Für den IBM-AML-Split sind mindestens {IBM_AML_MIN_STEPS} Tage nötig, "
+            f"gefunden: {time_steps}"
+        )
+    selection_end = (6 * time_steps + 5) // 10
+    train_end = (8 * time_steps + 5) // 10
+    return TemporalSplit(
+        train=StepRange(1, train_end),
+        validation=StepRange(selection_end + 1, train_end),
+        test=StepRange(train_end + 1, time_steps),
+    )
+
+
 def split_for(dataset: str, time_steps: int) -> TemporalSplit:
     if dataset == "synthetic":
         return synthetic_split(time_steps)
     if dataset == "elliptic":
         return ELLIPTIC_SPLIT
+    if dataset == "ibm-aml":
+        return ibm_aml_split(time_steps)
     raise SplitError(f"Kein Split fuer Datensatz {dataset} definiert")
 
 

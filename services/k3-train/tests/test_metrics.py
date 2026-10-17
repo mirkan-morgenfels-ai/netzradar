@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 from sklearn.metrics import average_precision_score
 
+from k3_train import metrics
 from k3_train.metrics import (
     accuracy_at_top_share,
     all_negative_accuracy,
@@ -14,9 +15,11 @@ from k3_train.metrics import (
     pr_curve_points,
     precision_at_recall,
     prevalence,
+    random_block_rows,
     random_ranking_pr_aucs,
     ranked_average_precision,
     recall_at_precision,
+    seed_spread_summary,
     thin_indices,
     top_share_counts,
     top_share_flags,
@@ -143,6 +146,24 @@ def test_random_rankings_match_the_expected_value() -> None:
     np.testing.assert_array_equal(values, again)
 
 
+def test_random_blocks_hold_at_most_a_million_cells_by_hand() -> None:
+    assert random_block_rows(852) == 1000
+    assert random_block_rows(1000) == 1000
+    assert random_block_rows(5000) == 200
+    assert random_block_rows(1_016_000) == 1
+    assert random_block_rows(0) == 1000
+
+
+def test_smaller_random_blocks_draw_the_same_rankings(monkeypatch: pytest.MonkeyPatch) -> None:
+    y = np.zeros(40, dtype=bool)
+    y[[3, 11, 12, 29, 38]] = True
+    full = random_ranking_pr_aucs(y, permutations=2345, seed=42)
+    for cells, rows in ((400, 10), (41, 1), (1, 1)):
+        monkeypatch.setattr(metrics, "RANDOM_MAX_CELLS", cells)
+        assert random_block_rows(y.size) == rows
+        np.testing.assert_array_equal(random_ranking_pr_aucs(y, permutations=2345, seed=42), full)
+
+
 def test_unknown_labels_are_excluded_from_evaluation() -> None:
     labels = pd.Series(["illicit", "unknown", "licit", "licit", "illicit"])
     test_mask = pd.Series([True, True, True, False, False])
@@ -211,3 +232,20 @@ def test_invalid_inputs_are_rejected() -> None:
         pr_auc([1, 0], [0.1])
     with pytest.raises(ValueError, match="0/1"):
         pr_auc(["illicit", "licit"], [0.1, 0.2])
+
+
+def test_seed_spread_by_hand() -> None:
+    spread = seed_spread_summary((42, 43, 44), 42, [0.5, 0.25, 0.75])
+    assert spread == {
+        "seeds": [42, 43, 44],
+        "reportedSeed": 42,
+        "prAuc": [0.5, 0.25, 0.75],
+        "mean": 0.5,
+        "min": 0.25,
+        "max": 0.75,
+    }
+    assert seed_spread_summary([7], 7, [0.3])["mean"] == 0.3
+    with pytest.raises(ValueError, match="Länge"):
+        seed_spread_summary([42, 43], 42, [0.5])
+    with pytest.raises(ValueError, match="fehlt"):
+        seed_spread_summary([43, 44], 42, [0.5, 0.6])

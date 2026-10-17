@@ -22,12 +22,14 @@ import {
   accuracySentence,
   baselineGapEffectsSentence,
   baselineSentence,
+  boostingReferenceSentence,
   caveatConclusion,
   caveatTitle,
   compareItem,
   decompositionSentences,
   graphLeadMeasured,
   homophilyLimitConclusion,
+  neuralShapeSubject,
   pairSentence,
   randomComparisonSentence,
   recallSentence,
@@ -44,11 +46,13 @@ import {
   formatIsoTimeUtc,
   formatPercent,
   formatPlainNumber,
+  formatSeedList,
   formatShare,
   formatStepRange,
   joinList,
   LABEL_TEXT,
   METHOD_SHORT_TEXT,
+  seedSetScoreText,
 } from "@/lib/netzradar/format";
 import { countLabels, seedNodes, summarizeComponents } from "@/lib/netzradar/graph";
 import { CHAIN_LABELS, chainExample } from "@/lib/netzradar/messagePassing";
@@ -56,7 +60,11 @@ import {
   averagedSeparation,
   bestBaseline,
   bestRun,
+  boostingTraining,
+  compareScores,
   comparisonMargin,
+  edgelessRuns,
+  excerptCounts,
   featureNames,
   findRun,
   finalTrainRatioWeight,
@@ -65,14 +73,26 @@ import {
   labelledTestCount,
   labelTotal,
   meanDegree,
+  neighbourhoodNodes,
+  neuralTraining,
   numberParameter,
   parameterEntries,
   reachedEpochLimit,
+  reachedIterationLimit,
   runDateRange,
   searchWeight,
+  spreadSeeds,
   zeroMadFeatures,
 } from "@/lib/netzradar/summary";
-import { NODE_LABELS, type FeatureSet, type Run, type StepRange, type Training } from "@/lib/netzradar/types";
+import {
+  NODE_LABELS,
+  type FeatureSet,
+  type LabelCounts,
+  type Run,
+  type SeedSet,
+  type StepRange,
+  type Training,
+} from "@/lib/netzradar/types";
 import { isRepoPath, PROJECTS, README_URL, REPO_URL, repoUrl, RUNS_URL } from "@/lib/site";
 
 const DESCRIPTION_METHODS = joinList(netzRadarData.metrics.runs.map((run) => METHOD_SHORT_TEXT[run.method]));
@@ -108,6 +128,8 @@ const SECTION_LINKS: ReadonlyArray<{ id: string; label: string }> = [
 const FIVE_RUN_GRID =
   "grid-cols-2 max-sm:[&>*:last-child:nth-child(odd)]:col-span-2 sm:grid-cols-6 sm:[&>*]:col-span-2 sm:[&>*:nth-last-child(-n+2)]:col-span-3 lg:grid-cols-5 lg:[&>*]:col-span-1 lg:[&>*:nth-last-child(-n+2)]:col-span-1";
 
+const SIX_RUN_GRID = "grid-cols-2 sm:grid-cols-3";
+
 const RUN_GRID: Record<number, string> = {
   1: "lg:grid-cols-1",
   2: "lg:grid-cols-2",
@@ -115,6 +137,15 @@ const RUN_GRID: Record<number, string> = {
   4: "lg:grid-cols-4",
   5: "lg:grid-cols-5",
 };
+
+function runGrid(count: number): string {
+  if (count === 5) return FIVE_RUN_GRID;
+  if (count === 6) return SIX_RUN_GRID;
+  return cx(
+    "grid-cols-2 [&>*:last-child:nth-child(odd)]:col-span-2 lg:[&>*:last-child:nth-child(odd)]:col-span-1",
+    RUN_GRID[count] ?? "lg:grid-cols-3",
+  );
+}
 
 const TERMS: ReadonlyArray<[string, string]> = [
   [
@@ -308,6 +339,7 @@ function StatusText({ runs, datasetName }: { runs: readonly Run[]; datasetName: 
   const graphs = runs.filter((run) => isGraphMethod(run.method)).map((run) => METHOD_SHORT_TEXT[run.method]);
   const parts = [
     baselines.length > 0 ? `die Baselines (${joinList(baselines)})` : null,
+    findRun(runs, "hgb") ? "als starkes überwachtes Verfahren ohne Kanten ein Gradient Boosting" : null,
     graphs.length > 0 ? `die Graph Neural Networks ${joinList(graphs)}` : null,
     findRun(runs, "mlp") ? "als Kontrolle ein MLP ohne Kanten" : null,
   ].filter((part): part is string => part !== null);
@@ -342,9 +374,36 @@ function flaggedSentence(run: Run): string {
 function finalModelText(run: Run, training: Training): string {
   const weight = formatPlainNumber(training.positiveWeight);
   const rule = training.positiveWeightRule === "fixed" ? "fest" : "Verhältnis aus den Labels";
-  return `${METHOD_SHORT_TEXT[run.method]} mit ${FEATURE_SET_DATIVE[run.featureSet]}, w = ${weight} (${rule}) und ${formatInteger(
-    training.selectedEpoch,
-  )} Epochen`;
+  const length =
+    training.kind === "boosting"
+      ? `${formatInteger(training.selectedIteration)} Bäumen mit höchstens ${formatInteger(training.maxLeafNodes)} Blättern`
+      : `${formatInteger(training.selectedEpoch)} Epochen`;
+  return `${METHOD_SHORT_TEXT[run.method]} mit ${FEATURE_SET_DATIVE[run.featureSet]}, w = ${weight} (${rule}) und ${length}`;
+}
+
+function limitText(run: Run, training: Training): string {
+  return training.kind === "boosting"
+    ? `${METHOD_SHORT_TEXT[run.method]} (beste Iteration auf der Obergrenze von ${formatInteger(training.maxIter)} Bäumen)`
+    : `${METHOD_SHORT_TEXT[run.method]} (beste Epoche auf der Obergrenze von ${formatInteger(training.maxEpochs)} Epochen)`;
+}
+
+function reachedLimit(training: Training): boolean {
+  return training.kind === "boosting" ? reachedIterationLimit(training) : reachedEpochLimit(training);
+}
+
+function limitUnitText(trainings: readonly Training[]): string {
+  const boosting = trainings.some((training) => training.kind === "boosting");
+  const neural = trainings.some((training) => training.kind === "neural");
+  if (boosting && neural) return "Epochen bzw. Bäume";
+  return boosting ? "Bäume" : "Epochen";
+}
+
+function seedLabelText(counts: LabelCounts): string {
+  const part = (count: number, text: string) => (count === 0 ? `keiner ${text}` : `${formatInteger(count)} ${text}`);
+  return `${part(counts.illicit, "das Label illegal")}, ${part(counts.licit, "das Label legal")} und ${part(
+    counts.unknown,
+    "kein Label",
+  )}`;
 }
 
 function activationText(value: string): string {
@@ -364,35 +423,37 @@ export default function NetzRadarPage() {
   const { dataset, split, evaluation, runs } = metrics;
   const zscore = findRun(runs, "zscore");
   const iforest = findRun(runs, "iforest");
+  const hgb = findRun(runs, "hgb");
   const gcn = findRun(runs, "gcn");
   const graphsage = findRun(runs, "graphsage");
   const mlp = findRun(runs, "mlp");
   const graphRuns = runs.filter((run) => isGraphMethod(run.method));
+  const edgeless = edgelessRuns(runs);
   const learned = runs.flatMap((run) => (run.training ? [{ run, training: run.training }] : []));
-  const graphTraining = graphRuns[0]?.training ?? null;
+  const neural = runs.flatMap((run) => {
+    const training = neuralTraining(run);
+    return training ? [{ run, training }] : [];
+  });
+  const hgbTraining = boostingTraining(hgb);
+  const graphTraining = neuralTraining(graphRuns[0] ?? null);
+  const mlpTraining = neuralTraining(mlp);
   const firstTraining = learned[0]?.training ?? null;
-  const sameShape =
-    graphTraining !== null &&
-    learned.every(
-      ({ training }) =>
-        training.layers === graphTraining.layers &&
-        training.hidden === graphTraining.hidden &&
-        training.activation === graphTraining.activation &&
-        training.dropout === graphTraining.dropout &&
-        training.optimizer === graphTraining.optimizer &&
-        training.learningRate === graphTraining.learningRate &&
-        training.weightDecay === graphTraining.weightDecay,
-    );
+  const neuralFirst = neural[0]?.training ?? null;
+  const shapeSubject = neuralShapeSubject(runs);
   const baseline = bestBaseline(runs);
   const best = bestRun(runs);
   const hasGnnRun = graphRuns.length > 0;
   const margin = comparisonMargin(evaluation);
-  const leadMeasured = graphLeadMeasured(graphRuns, [baseline, mlp], margin);
+  const leadMeasured = graphLeadMeasured(graphRuns, [baseline, ...edgeless], margin);
   const scoreGnnRun = nodes.scoreGnnMethod === null ? null : findRun(runs, nodes.scoreGnnMethod);
   const otherGraphRuns = graphRuns.filter((run) => run.method !== nodes.scoreGnnMethod);
+  const gnnLabel = nodes.scoreGnnMethod === null ? null : METHOD_SHORT_TEXT[nodes.scoreGnnMethod];
   const seeds = seedNodes(nodes.nodes);
   const seedLabels = countLabels(seeds);
-  const others = nodes.nodes.filter((node) => node.seedRank === null);
+  const gnnSeeds = seedNodes(nodes.nodes, "gnn");
+  const gnnSeedLabels = countLabels(gnnSeeds);
+  const others = neighbourhoodNodes(nodes.nodes, "iforest");
+  const excerpt = excerptCounts(nodes.nodes);
   const components = summarizeComponents(nodes.nodes, edges.edges);
   const labelled = labelledTestCount(evaluation);
   const illicitVisibility = numberParameter(dataset.generator, "illicitVisibility");
@@ -412,20 +473,37 @@ export default function NetzRadarPage() {
   const ratioWeight = searchWeight(runs, "trainRatio");
   const fixedWeight = searchWeight(runs, "fixed");
   const finalRatioWeight = finalTrainRatioWeight(runs);
-  const epochLimitRuns = learned.filter(({ training }) => reachedEpochLimit(training));
+  const limitRuns = learned.filter(({ training }) => reachedLimit(training));
+  const limitUnit = limitUnitText(limitRuns.map(({ training }) => training));
+  const spreadSeedList = spreadSeeds(runs);
+  const boostingLeaves = hgbTraining
+    ? [...new Set(hgbTraining.search.map((candidate) => candidate.maxLeafNodes))].sort((a, b) => a - b)
+    : [];
+  const boostingFixedWeights = hgbTraining
+    ? [
+        ...new Set(
+          hgbTraining.search
+            .filter((candidate) => candidate.positiveWeightRule === "fixed")
+            .map((candidate) => candidate.positiveWeight),
+        ),
+      ]
+    : [];
   const chain = chainExample();
   const chainGcnB = chain.find((row) => row.key === "gcn")?.values[1];
   const chainMeanB = chain.find((row) => row.key === "mean")?.values[1];
-  const explorerDescription = `Netzwerk-Ausschnitt mit ${formatInteger(nodes.nodes.length)} Knoten und ${formatInteger(
-    edges.edges.length,
-  )} Kanten, Farbe und Form nach Label (${LABEL_TEXT.illicit}, ${LABEL_TEXT.licit}, ${
-    LABEL_TEXT.unknown
-  }). Dieselben Startknoten stehen als Text in der Tabelle unter der Grafik.`;
+  const explorerDescription = (set: SeedSet) =>
+    `Netzwerk-Ausschnitt mit ${formatInteger(nodes.nodes.length)} Knoten und ${formatInteger(
+      edges.edges.length,
+    )} Kanten, Farbe und Form nach Label (${LABEL_TEXT.illicit}, ${LABEL_TEXT.licit}, ${
+      LABEL_TEXT.unknown
+    }). Groß gezeichnet sind die Startknoten nach ${seedSetScoreText(set, gnnLabel ?? "")}; dieselben Startknoten stehen als Text in der Tabelle unter der Grafik.`;
   const baselineCount = runs.filter((run) => run.training === null).length;
   const methodParts = [
     baselineCount > 0 ? countText(baselineCount, "Baseline", "Baselines") : null,
+    edgeless.length > 0
+      ? countText(edgeless.length, "überwachtes Verfahren ohne Kanten", "überwachte Verfahren ohne Kanten")
+      : null,
     graphRuns.length > 0 ? countText(graphRuns.length, "Graph Neural Network", "Graph Neural Networks") : null,
-    mlp ? "1 Kontrolle ohne Kanten" : null,
   ].filter((part): part is string => part !== null);
   const facts: readonly HeroFact[] = [
     { value: formatInteger(runs.length), label: "Verfahren", detail: joinList(methodParts) },
@@ -441,13 +519,14 @@ export default function NetzRadarPage() {
     { id: "methodik-zscore", label: "Robuste Z-Scores" },
     { id: "methodik-iforest", label: "Isolation Forest" },
     { id: "methodik-graphmasse", label: "Graphmaße" },
+    ...(hgbTraining ? [{ id: "methodik-hgb", label: "Gradient Boosting ohne Kanten" }] : []),
     ...(graphTraining
       ? [
           { id: "methodik-message-passing", label: "Message Passing" },
           { id: "methodik-gcn-graphsage", label: "GCN und GraphSAGE" },
-          ...(mlp?.training ? [{ id: "methodik-mlp", label: "Kontrolle: MLP ohne Kanten" }] : []),
+          ...(mlpTraining ? [{ id: "methodik-mlp", label: "Kontrolle: MLP ohne Kanten" }] : []),
           { id: "methodik-gewichtung", label: "Klassengewichtung" },
-          ...(firstTraining ? [{ id: "methodik-auswahl", label: "Auswahl und Endmodell" }] : []),
+          ...(neuralFirst ? [{ id: "methodik-auswahl", label: "Auswahl und Endmodell" }] : []),
         ]
       : []),
     ...(learned.length > 0 ? [{ id: "methodik-suche", label: "Suche am Validierungsteil" }] : []),
@@ -529,17 +608,7 @@ export default function NetzRadarPage() {
         }
       >
         <div data-testid="headline-figures">
-          <div
-            className={cx(
-              "grid gap-3 sm:gap-4",
-              runs.length === 5
-                ? FIVE_RUN_GRID
-                : cx(
-                    "grid-cols-2 [&>*:last-child:nth-child(odd)]:col-span-2 lg:[&>*:last-child:nth-child(odd)]:col-span-1",
-                    RUN_GRID[runs.length] ?? "lg:grid-cols-5",
-                  ),
-            )}
-          >
+          <div className={cx("grid gap-3 sm:gap-4", runGrid(runs.length))}>
             {runs.map((run) => (
               <StatTile key={run.method} label={METHOD_SHORT_TEXT[run.method]} value={formatDecimal(run.prAuc)}>
                 <PrAucMeter
@@ -638,11 +707,12 @@ export default function NetzRadarPage() {
                       1,
                     )} Standardabweichungen). Deutlich stärker weicht der größte Ausgangsanteil der Fan-out-Verteiler ab, und runde Beträge sind bei Musterknoten doppelt so häufig. Fan-in-Sammler haben als Summe vieler Zubringer einen höheren Betrag und einen kleineren Variationskoeffizienten der Eingangsbeträge (die Beträge der Zubringer streuen weniger).`}
               </p>
-              <p>
-                Vorgesehen sind zwei weitere Datensätze: IBM Transactions for Anti-Money Laundering (synthetisch, Lizenz
-                CDLA-Sharing-1.0) und das Elliptic Bitcoin Dataset (Lizenz CC BY-NC-ND 4.0). Elliptic wird nur lokal für
-                den Methodenvergleich ausgewertet. Aus diesem Datensatz werden weder Rohdaten noch bearbeitete Fassungen
-                oder Ausschnitte veröffentlicht.
+              <p data-testid="dataset-plans">
+                Vorgesehen sind zwei weitere Datensätze, beide nur für einen lokalen Methodenvergleich: IBM Transactions
+                for Anti-Money Laundering (synthetisch, Lizenz CDLA-Sharing-1.0) und das Elliptic Bitcoin Dataset (Lizenz
+                CC BY-NC-ND 4.0). Ausgewertet ist bisher keiner von beiden. Die öffentliche Demo auf dieser Seite bleibt
+                das synthetische Netz; aus beiden Datensätzen werden weder Rohdaten noch bearbeitete Fassungen oder
+                Ausschnitte veröffentlicht.
               </p>
             </div>
             <div className={cx("p-5 sm:p-6", CARD)} data-testid="terms">
@@ -733,46 +803,82 @@ export default function NetzRadarPage() {
       >
         <div className="grid gap-8 lg:grid-cols-12 lg:gap-14">
           <div className="min-w-0 space-y-4 lg:col-span-7">
-            <p className={BODY}>
-              Gezeigt wird die Nachbarschaft bis {nodes.selection.hops} Kanten Abstand um die {formatInteger(seeds.length)}{" "}
-              Testknoten mit dem höchsten Isolation-Forest-Score, ungerichtet gezählt und ohne Rücksicht auf das Label
-              ausgewählt: {formatInteger(nodes.nodes.length)} Knoten und {formatInteger(edges.edges.length)} Kanten
+            <p className={BODY} data-testid="excerpt-text">
+              {gnnLabel === null
+                ? `Gezeigt wird die Nachbarschaft bis ${nodes.selection.hops} Kanten Abstand um die ${formatInteger(
+                    seeds.length,
+                  )} Testknoten mit dem höchsten Isolation-Forest-Score, ungerichtet gezählt und ohne Rücksicht auf das Label ausgewählt: ${formatInteger(
+                    nodes.nodes.length,
+                  )} Knoten und ${formatInteger(edges.edges.length)} Kanten`
+                : `Gezeigt werden zwei Startmengen aus je ${formatInteger(
+                    nodes.selection.seeds,
+                  )} Testknoten, beide ohne Rücksicht auf das Label ausgewählt: die mit dem höchsten Isolation-Forest-Score und die mit dem höchsten GNN-Score (${gnnLabel}). Dazu kommt jeweils die Nachbarschaft bis ${
+                    nodes.selection.hops
+                  } Kanten Abstand, ungerichtet gezählt. Der Ausschnitt ist die Vereinigung beider Nachbarschaften: ${formatInteger(
+                    nodes.nodes.length,
+                  )} Knoten und ${formatInteger(edges.edges.length)} Kanten. ${formatInteger(
+                    excerpt.iforest,
+                  )} Knoten liegen in der Nachbarschaft der Startknoten nach Isolation-Forest-Score, ${formatInteger(
+                    excerpt.gnn,
+                  )} in der nach GNN-Score, ${formatInteger(excerpt.both)} in beiden; ${
+                    excerpt.sharedSeeds === 0
+                      ? "kein Knoten gehört"
+                      : excerpt.sharedSeeds === 1
+                        ? "1 Knoten gehört"
+                        : `${formatInteger(excerpt.sharedSeeds)} Knoten gehören`
+                  } zu beiden Startmengen`}
               {nodes.selection.truncated
-                ? `, auf ${formatInteger(nodes.selection.maxNodes)} Knoten gekürzt`
-                : ", nicht gekürzt"}
-              . Die Positionen hat der Export vorab berechnet (Federlayout, Seed {metrics.seed}); der Browser zeichnet nur.
+                ? `. Der Ausschnitt ist auf ${formatInteger(
+                    nodes.selection.maxNodes,
+                  )} Knoten gekürzt; weggefallen sind zuerst die Knoten mit dem größten Abstand zu den Startknoten, Startknoten nie.`
+                : `. Nicht gekürzt: Die Obergrenze liegt bei ${formatInteger(
+                    nodes.selection.maxNodes,
+                  )} Knoten, gekürzt würde zuerst bei den Knoten mit dem größten Abstand zu den Startknoten, nie bei Startknoten.`}{" "}
+              Die Positionen hat der Export vorab berechnet (Federlayout, Seed {metrics.seed}); der Browser zeichnet nur.
               {components.onePerTimeStep
                 ? ` Der Ausschnitt zerfällt in ${formatInteger(components.count)} getrennte Teile, einen je Zeitschritt: Kanten verbinden hier nur Transaktionen desselben Zeitschritts.`
                 : ` Der Ausschnitt besteht aus ${formatInteger(components.count)} zusammenhängenden Teilen.`}
             </p>
-          {scoreGnnRun?.training ? (
-            <p data-testid="score-gnn-text" className={BODY}>
-              Detailfeld und Tabelle zeigen zusätzlich den Score von {METHOD_SHORT_TEXT[scoreGnnRun.method]}
-              {otherGraphRuns.length > 0
-                ? `, dem Graph Neural Network mit der höheren PR-AUC auf dem Validierungsteil (${formatDecimal(
-                    scoreGnnRun.training.validationPrAuc,
-                  )} gegen ${joinList(
-                    otherGraphRuns.map(
-                      (run) => `${formatDecimal(run.training?.validationPrAuc ?? 0)} bei ${METHOD_SHORT_TEXT[run.method]}`,
-                    ),
-                  )}); der Testteil entscheidet darüber nicht`
-                : ""}
-              . Der Ausschnitt selbst ist nach dem Isolation-Forest-Score gewählt, nicht nach dem GNN-Score. Die Knoten
-              mit den höchsten GNN-Scores können deshalb fehlen.
-            </p>
-          ) : null}
+            {scoreGnnRun?.training ? (
+              <p data-testid="score-gnn-text" className={BODY}>
+                Der GNN-Score stammt von {METHOD_SHORT_TEXT[scoreGnnRun.method]}
+                {otherGraphRuns.length > 0
+                  ? `, dem Graph Neural Network mit der höheren PR-AUC auf dem Validierungsteil (${formatDecimal(
+                      scoreGnnRun.training.validationPrAuc,
+                    )} gegen ${joinList(
+                      otherGraphRuns.map(
+                        (run) => `${formatDecimal(run.training?.validationPrAuc ?? 0)} bei ${METHOD_SHORT_TEXT[run.method]}`,
+                      ),
+                    )}); der Testteil entscheidet darüber nicht`
+                  : ""}
+                . Der Umschalter über dem Graphen wählt, welche Startmenge die Tabelle zeigt und der Graph groß zeichnet; das
+                Detailfeld nennt für jeden Knoten beide Ränge und Abstände. Der GNN-Score ist eine Differenz zweier Logits
+                ohne feste Ober- und Untergrenze. Ein Wert über 0 heißt nur, dass das Logit für Label illegal das für Label
+                legal übersteigt. Als Schwelle ist 0 nicht kalibriert:{" "}
+                {scoreGnnRun.training.positiveWeight === 1
+                  ? "Eine Kalibrierung auf Wahrscheinlichkeiten fehlt."
+                  : `Das Training gewichtet Knoten mit Label illegal mit w = ${formatPlainNumber(
+                      scoreGnnRun.training.positiveWeight,
+                    )}, und eine Kalibrierung auf Wahrscheinlichkeiten fehlt.`}{" "}
+                Die Seite liest den GNN-Score deshalb nur als Rangfolge.
+              </p>
+            ) : null}
           </div>
           <div className="space-y-5 lg:col-span-5">
-            <p className="text-[15px] leading-[1.75] text-ink sm:text-base">
-              Von den {formatInteger(seeds.length)} Startknoten tragen {formatInteger(seedLabels.illicit)} das Label
-              illegal, {formatInteger(seedLabels.licit)} das Label legal und {formatInteger(seedLabels.unknown)} kein
-              Label.
+            <p className="text-[15px] leading-[1.75] text-ink sm:text-base" data-testid="seed-labels">
+              Von den {formatInteger(seeds.length)} Startknoten
+              {gnnLabel === null ? "" : " nach Isolation-Forest-Score"} tragen {seedLabelText(seedLabels)}.
+              {gnnLabel === null
+                ? ""
+                : ` Von den ${formatInteger(gnnSeeds.length)} Startknoten nach GNN-Score (${gnnLabel}) tragen ${seedLabelText(
+                    gnnSeedLabels,
+                  )}.`}
             </p>
             <p className="border-l border-gold/60 pl-4 text-[13px] leading-relaxed text-slate" data-testid="graph-hint">
               Ziehen verschiebt den Ausschnitt, das Mausrad zoomt; auf Touch-Geräten mit zwei Fingern zoomen und
               verschieben. Außerhalb des Graphen scrollen Sie die Seite. Ein Klick auf einen Knoten hebt ihn und seine
               Nachbarn hervor und zeigt die Werte im Detailfeld. Ohne Maus lässt sich jeder Startknoten über die Tabelle
-              auswählen.
+              auswählen{gnnLabel === null ? "" : "; der Umschalter über dem Graphen wechselt die Startmenge"}.
             </p>
           </div>
         </div>
@@ -781,7 +887,8 @@ export default function NetzRadarPage() {
             nodes={nodes.nodes}
             edges={edges.edges}
             scoreGnnMethod={nodes.scoreGnnMethod}
-            description={explorerDescription}
+            hops={nodes.selection.hops}
+            descriptions={{ iforest: explorerDescription("iforest"), gnn: explorerDescription("gnn") }}
           />
         </div>
       </Section>
@@ -867,7 +974,9 @@ export default function NetzRadarPage() {
                 Trainiert wird auf den Zeitschritten {formatStepRange(split.train)}, getestet auf{" "}
                 {formatStepRange(split.test)}. Die Zeitschritte {formatStepRange(split.validation)} am Ende des
                 Trainingszeitraums sind als Validierungsteil reserviert; dort werden Merkmalssatz, Klassengewicht und
-                Epochenzahl der gelernten Verfahren gewählt, nie am Testteil. Kein Zeitschritt liegt auf beiden Seiten,
+                Epochenzahl der gelernten Verfahren gewählt
+                {hgbTraining ? " (beim Gradient Boosting statt der Epochen die Zahl der Bäume und ihre Blattzahl)" : ""},
+                nie am Testteil. Kein Zeitschritt liegt auf beiden Seiten,
                 und zwischen Trainings- und Testknoten verläuft keine Kante (crossSplitEdges = {split.crossSplitEdges}).
                 Median, MAD und der Isolation Forest werden nur auf Trainingsknoten angepasst, ohne Labels. Die gelernten
                 Verfahren sehen Labels nur aus den Trainingszeitschritten.
@@ -909,10 +1018,69 @@ export default function NetzRadarPage() {
                   Eigenvektor-Zentralität auf seiner ungerichteten Fassung. Sie beschreiben die Lage eines Knotens im Netz,
                   nicht aber die Merkmale seiner Nachbarn.
                   {hasGnnRun
-                    ? " Genau das ergänzen die Graph Neural Networks im nächsten Abschnitt."
+                    ? " Genau das ergänzen die Graph Neural Networks."
                     : " Genau das sollen die Graph Neural Networks ergänzen."}
+                  {edgeless.length > 0
+                    ? ` Die Graphmaße stammen zwar aus den Kanten, aber ${joinList(
+                        edgeless.map((run) => (run.method === "hgb" ? "Gradient Boosting" : "MLP")),
+                      )} heißen hier trotzdem „ohne Kanten“: Sie rechnen kein Message Passing, und der Score eines Knotens hängt nur von seiner eigenen Zeile ab.`
+                    : ""}
                 </p>
               </MethodSection>
+              {hgb && hgbTraining ? (
+                <MethodSection id="methodik-hgb" title="Gradient Boosting ohne Kanten">
+                  <p>
+                    Gradient Boosting (HistGradientBoostingClassifier aus scikit-learn) baut nacheinander kleine
+                    Entscheidungsbäume f<sub>1</sub>, …, f<sub>M</sub>. Jeder neue Baum wird an die Gradienten des Log-Loss
+                    der bisherigen Summe angepasst und korrigiert so deren Fehler. Der Score eines Knotens ist die Summe aller
+                    Bäume, gelesen als Log-Odds für das Label illegal (p ist die geschätzte Wahrscheinlichkeit für dieses
+                    Label):
+                  </p>
+                  <Formula label="Formel: Score des Gradient Boosting">
+                    Score(x) = F<sub>0</sub> + η · Σ<sub>m=1</sub>
+                    <sup>M</sup> f<sub>m</sub>(x) = log(p / (1 − p))
+                  </Formula>
+                  <p>
+                    mit dem Startwert F<sub>0</sub>, den Log-Odds des Anteils der Trainingszeilen mit Label illegal
+                    {hgbTraining.positiveWeight === 1
+                      ? ""
+                      : ` (diese Zeilen mit dem Gewicht w = ${formatPlainNumber(hgbTraining.positiveWeight)} gezählt)`}
+                    , der Lernrate η = {formatPlainNumber(hgbTraining.learningRate)} und M ={" "}
+                    {formatInteger(hgbTraining.selectedIteration)} Bäumen. Für die PR-AUC zählt nur die Rangfolge der
+                    Scores. Jeder Baum hat höchstens {formatInteger(hgbTraining.maxLeafNodes)} Blätter und mindestens{" "}
+                    {formatInteger(hgbTraining.minSamplesLeaf)} Knoten je Blatt
+                    {hgbTraining.l2Regularization === 0 ? ", ohne L2-Regularisierung" : ""}; die Merkmale werden vorab in
+                    höchstens {formatInteger(hgbTraining.maxBins)} Intervalle geteilt, nur aus den Trainingszeilen. Gelernt
+                    wird auf denselben Merkmalen wie bei den übrigen Verfahren ({dataset.features} lokale
+                    {hgbTraining.features.length > dataset.features
+                      ? `, im gewählten Merkmalssatz zusätzlich ${hgbTraining.features.length - dataset.features} Graphmaße`
+                      : ""}
+                    ), aber ohne Nachbarn. Auf tabellarischen Daten ist Gradient Boosting der übliche starke Vergleich.{" "}
+                    {boostingReferenceSentence(hgb, mlp, margin)}
+                  </p>
+                  <p>
+                    Die Suche läuft wie bei den Graph Neural Networks nur am Validierungsteil, hier über{" "}
+                    {formatInteger(hgbTraining.search.length)} Kandidaten: nur lokale Merkmale oder zusätzlich Graphmaße,
+                    Gewicht der Knoten mit Label illegal als Verhältnis aus den Labels oder fest{" "}
+                    {joinList(boostingFixedWeights.map(formatPlainNumber))}
+                    {boostingFixedWeights.length === 1 && boostingFixedWeights[0] === 1 ? " (also ungewichtet)" : ""} und
+                    höchstens {joinList(boostingLeaves.map(formatInteger), "oder")} Blätter je Baum.
+                    Jeder Kandidat lernt bis zu {formatInteger(hgbTraining.maxIter)} Bäume auf den Zeitschritten{" "}
+                    {formatStepRange(hgbTraining.selectionSteps)}; seine Baumzahl ist die Stelle mit der höchsten PR-AUC auf
+                    den Zeitschritten {formatStepRange(hgbTraining.validationSteps)}. Gewählt wurden{" "}
+                    {FEATURE_SET_TEXT[hgb.featureSet]}, w = {formatPlainNumber(hgbTraining.positiveWeight)} (
+                    {hgbTraining.positiveWeightRule === "fixed" ? "fest" : "Verhältnis aus den Labels"}),{" "}
+                    {formatInteger(hgbTraining.maxLeafNodes)} Blätter und {formatInteger(hgbTraining.selectedIteration)}{" "}
+                    Bäume (Validierungs-PR-AUC {formatDecimal(hgbTraining.validationPrAuc)}). Das Endmodell lernt mit genau
+                    dieser Einstellung auf den Zeitschritten {formatStepRange(hgbTraining.finalFitSteps)}. Ohne Early
+                    Stopping und ohne Stichprobe von Zeilen oder Merkmalen zieht das Verfahren nichts zufällig
+                    {hgbTraining.environment.threads === 1
+                      ? "; es rechnet auf einem Thread, damit Gleitkommasummen nicht von der Reihenfolge abhängen"
+                      : ""}
+                    .
+                  </p>
+                </MethodSection>
+              ) : null}
               {graphTraining ? (
                 <div className="space-y-3" data-testid="method-gnn">
                   <MethodSection id="methodik-message-passing" title="Graph Neural Networks: Message Passing">
@@ -932,11 +1100,7 @@ export default function NetzRadarPage() {
                     <p>
                       Startwert sind die skalierten Merkmale x<sub>v</sub> des Knotens. Nach {graphTraining.layers} Schichten
                       hängt die Ausgabe eines Knotens nur von Knoten ab, die höchstens {graphTraining.layers} Kanten entfernt
-                      sind.{" "}
-                      {sameShape
-                        ? "Hier haben alle gelernten Verfahren"
-                        : `${METHOD_SHORT_TEXT[graphRuns[0]?.method ?? "gcn"]} hat`}{" "}
-                      {graphTraining.layers} Schichten mit {graphTraining.hidden} versteckten Einheiten,{" "}
+                      sind. {shapeSubject} {graphTraining.layers} Schichten mit {graphTraining.hidden} versteckten Einheiten,{" "}
                       {activationText(graphTraining.activation)} und Dropout {formatPlainNumber(graphTraining.dropout)} nach der
                       ersten Schicht und zwei Ausgaben, je eine für das Label illegal und das Label legal. Trainiert wird
                       mit{" "}
@@ -1017,13 +1181,13 @@ export default function NetzRadarPage() {
                       keine Nachbarn: B und C bleiben 0.
                     </p>
                   </MethodSection>
-                  {mlp?.training ? (
+                  {mlp && mlpTraining ? (
                     <MethodSection id="methodik-mlp" title="Kontrolle: MLP ohne Kanten">
                       <Formula label="Formel: MLP-Schicht">
                         h<sub>v</sub>′ = W h<sub>v</sub>
                       </Formula>
                       <p>
-                        Die Kontrolle hat dieselbe Größe ({mlp.training.layers} Schichten, {mlp.training.hidden} Einheiten),
+                        Die Kontrolle hat dieselbe Größe ({mlpTraining.layers} Schichten, {mlpTraining.hidden} Einheiten),
                         dieselben Labels und dasselbe Auswahlverfahren: dieselben Kandidaten für Merkmalssatz und
                         Klassengewicht, Auswahl am selben Validierungsteil. Sie hat aber lineare Schichten statt der Faltungen
                         und damit keine Kanten. Welcher Merkmalssatz, welches Gewicht und wie viele Epochen gewählt werden,
@@ -1032,6 +1196,13 @@ export default function NetzRadarPage() {
                         gleicher Überwachung und gleichem Auswahlverfahren bringt. Der Abstand zwischen MLP und Baselines
                         mischt dagegen die Wirkung der Labels mit dem Wechsel des Verfahrens und gegebenenfalls des
                         Merkmalssatzes.
+                        {hgb && compareScores(hgb.prAuc, mlp.prAuc, margin) === "higher"
+                          ? ` Das MLP ist auf diesem Netz aber deutlich schwächer als das Gradient Boosting (${formatDecimal(
+                              mlp.prAuc,
+                            )} gegen ${formatDecimal(
+                              hgb.prAuc,
+                            )}). Gegen das MLP gerechnet fällt der Beitrag der Nachbarschaft größer aus als gegen das Gradient Boosting; die Einordnung rechnet deshalb vorsichtig gegen das stärkste Verfahren ohne Kanten.`
+                          : ""}
                       </p>
                     </MethodSection>
                   ) : null}
@@ -1058,27 +1229,32 @@ export default function NetzRadarPage() {
                       Das Gewicht verschiebt die vorhergesagten Chancen um den Faktor w, ändert im Optimum aber nicht die
                       Rangfolge der Knoten, und nur die Rangfolge zählt für die PR-AUC. Es wirkt über den Trainingsverlauf: wie
                       stark die seltenen Knoten mit Label illegal die Gradienten bestimmen. Deshalb ist auch der GNN-Score
-                      keine
-                      Wahrscheinlichkeit, sondern die Differenz der beiden Logits.
+                      keine Wahrscheinlichkeit, sondern die Differenz der beiden Logits.
+                      {hgbTraining
+                        ? ` Das Gradient Boosting gewichtet seinen Log-Loss auf dieselbe Weise über Stichprobengewichte; als festes Gewicht läuft dort w = ${joinList(
+                            boostingFixedWeights.map(formatPlainNumber),
+                            "oder",
+                          )} mit${boostingFixedWeights.length === 1 && boostingFixedWeights[0] === 1 ? ", also ungewichtet" : ""}.`
+                        : ""}
                     </p>
                   </MethodSection>
-                  {firstTraining ? (
+                  {neuralFirst ? (
                     <MethodSection id="methodik-auswahl" title="Auswahl am Validierungsteil, Endmodell auf dem Trainingszeitraum">
                       <p>
-                        Die Merkmale werden je Spalte robust skaliert: Median und{" "}
-                        {formatPlainNumber(firstTraining.scaling.madScale)} · MAD kommen nur aus den Knoten der jeweiligen
+                        Für die neuronalen Verfahren werden die Merkmale je Spalte robust skaliert: Median und{" "}
+                        {formatPlainNumber(neuralFirst.scaling.madScale)} · MAD kommen nur aus den Knoten der jeweiligen
                         Trainingszeitschritte, bei MAD = 0 ersetzt die Standardabweichung die MAD, und Werte jenseits von ±
-                        {formatPlainNumber(firstTraining.scaling.clip)} werden gekappt. Je Verfahren laufen{" "}
-                        {formatInteger(firstTraining.search.length)} Kandidaten: nur lokale Merkmale oder zusätzlich
+                        {formatPlainNumber(neuralFirst.scaling.clip)} werden gekappt. Je Verfahren laufen{" "}
+                        {formatInteger(neuralFirst.search.length)} Kandidaten: nur lokale Merkmale oder zusätzlich
                         Graphmaße, Gewicht als Verhältnis oder fest. Jeder trainiert auf den Zeitschritten{" "}
-                        {formatStepRange(firstTraining.selectionSteps)} und wird nach jeder Epoche auf den Knoten mit Label
-                        der Zeitschritte {formatStepRange(firstTraining.validationSteps)} bewertet. Nach{" "}
-                        {formatInteger(firstTraining.patience)} Epochen ohne Verbesserung bricht das Training ab, spätestens
-                        nach {formatInteger(firstTraining.maxEpochs)}. Gewählt wird der Kandidat mit der höchsten PR-AUC auf
+                        {formatStepRange(neuralFirst.selectionSteps)} und wird nach jeder Epoche auf den Knoten mit Label
+                        der Zeitschritte {formatStepRange(neuralFirst.validationSteps)} bewertet. Nach{" "}
+                        {formatInteger(neuralFirst.patience)} Epochen ohne Verbesserung bricht das Training ab, spätestens
+                        nach {formatInteger(neuralFirst.maxEpochs)}. Gewählt wird der Kandidat mit der höchsten PR-AUC auf
                         dem Validierungsteil, bei Gleichstand der frühere, als Epochenzahl seine beste Epoche.
                       </p>
                       <p>
-                        Danach wird das Endmodell neu auf den Zeitschritten {formatStepRange(firstTraining.finalFitSteps)}{" "}
+                        Danach wird das Endmodell neu auf den Zeitschritten {formatStepRange(neuralFirst.finalFitSteps)}{" "}
                         trainiert, mit Skalierung und Gewicht aus diesen Zeitschritten und genau der gewählten Zahl an
                         Epochen, und einmal auf dem Testteil bewertet, mit denselben Funktionen wie die Baselines. Der
                         Testteil entscheidet weder über Merkmale noch über Gewicht oder Epochen.
@@ -1124,12 +1300,10 @@ export default function NetzRadarPage() {
               dem Validierungsteil dient nur dem Vergleich der Kandidaten untereinander. Der Validierungsteil ist klein
               und umfasst andere Zeitschritte als der Testteil ({formatStepRange(split.validation)} gegen{" "}
               {formatStepRange(split.test)}); Validierungs- und Testwerte sind deshalb nicht direkt vergleichbar.
-              {epochLimitRuns.length > 0
-                ? ` Bei ${joinList(
-                    epochLimitRuns.map(({ run }) => METHOD_SHORT_TEXT[run.method]),
-                  )} liegt die beste Epoche auf der Obergrenze von ${formatInteger(
-                    epochLimitRuns[0]?.training.maxEpochs ?? 0,
-                  )} Epochen; das Early Stopping hat dort nicht gegriffen, mehr Epochen könnten den Wert ändern.`
+              {limitRuns.length > 0
+                ? ` An der Obergrenze lag die Auswahl bei ${joinList(
+                    limitRuns.map(({ run, training }) => limitText(run, training)),
+                  )}; dort hat die Suche nicht vor der Grenze gestoppt, mehr ${limitUnit} könnten den Wert ändern.`
                 : ""}
             </p>
           </div>
@@ -1217,25 +1391,36 @@ export default function NetzRadarPage() {
                 {pairSentence(gcn, graphsage, margin)}
               </li>
             ) : null}
-            {mlp && baseline && graphRuns.length > 0 ? (
+            {edgeless.length > 0 && baseline && graphRuns.length > 0 ? (
               <li data-testid="decomposition" className={FINDING}>
-                {decompositionSentences(mlp, baseline, graphRuns, margin).join(" ")}
+                {decompositionSentences(edgeless, baseline, graphRuns, margin).join(" ")}
               </li>
             ) : null}
             <li data-testid="recall-sentence" className={FINDING}>
               {recallSentence(runs, evaluation.testPositives)}
             </li>
             <li className={FINDING}>{accuracySentence(runs, evaluation)}</li>
-            <li className={FINDING}>
+            <li className={FINDING} data-testid="seed-sets-finding">
               Unter den {formatInteger(seeds.length)} Startknoten mit den höchsten Isolation-Forest-Scores tragen{" "}
               {formatInteger(seedLabels.illicit + seedLabels.licit)} ein Label; davon haben{" "}
               {formatPercent(illicitShareAmongLabelled(seedLabels))} das Label illegal (Prävalenz im Test:{" "}
               {formatPercent(evaluation.prevalence, 2)}). Die Startknoten haben im Mittel einen Gesamtgrad von{" "}
-              {formatDecimal(meanDegree(seeds), 1)}, die übrigen Knoten des Ausschnitts von{" "}
+              {formatDecimal(meanDegree(seeds), 1)}, die übrigen Knoten ihrer Nachbarschaft von{" "}
               {formatDecimal(meanDegree(others), 1)}.
               {meanDegree(seeds) > meanDegree(others)
-                ? " Der Isolation Forest gibt also vor allem Knoten mit vielen Kanten einen hohen Score, und solche Knoten gibt es auch im gutartigen Hintergrund. Das ist eine Lesart der exportierten Daten, kein eigener Test."
+                ? " Der Isolation Forest gibt also vor allem Knoten mit vielen Kanten einen hohen Score, und solche Knoten gibt es auch im gutartigen Hintergrund."
                 : ""}
+              {gnnLabel !== null && gnnSeeds.length > 0
+                ? ` Unter den ${formatInteger(gnnSeeds.length)} Startknoten nach GNN-Score (${gnnLabel}) tragen ${formatInteger(
+                    gnnSeedLabels.illicit + gnnSeedLabels.licit,
+                  )} ein Label; davon haben ${formatPercent(
+                    illicitShareAmongLabelled(gnnSeedLabels),
+                  )} das Label illegal, bei einem mittleren Gesamtgrad von ${formatDecimal(
+                    meanDegree(gnnSeeds),
+                    1,
+                  )}. Das Graph Neural Network hat dafür die Labels der Trainingszeitschritte gesehen, der Isolation Forest keine.`
+                : ""}{" "}
+              Das ist eine Lesart der exportierten Daten, kein eigener Test.
             </li>
             {best && !hasGnnRun ? (
               <li className={FINDING}>
@@ -1294,25 +1479,29 @@ export default function NetzRadarPage() {
             Datensatz „{dataset.displayName}“ gemessen. Sie beschreiben das Verhalten auf einem eigenen Generator und
             lassen sich nicht auf reale Transaktionsdaten übertragen.
           </li>
-          <li>
-            Ein Lauf je Verfahren: Alle Zahlen auf dieser Seite stammen aus Läufen mit Seed {metrics.seed}.
+          <li data-testid="seed-limit">
+            Ein Lauf je Verfahren: Alle Kennzahlen stammen aus Läufen mit Seed {metrics.seed}.
             {learned.length > 0 ? (
               <>
                 {" "}
-                Für die gelernten Verfahren ist die Streuung über weitere Seeds in den Laufprotokollen festgehalten (
+                Für die gelernten Verfahren zeigt die Metriktafel zusätzlich die Spanne über{" "}
+                {spreadSeedList === null ? "weitere Seeds" : `die Seeds ${formatSeedList(spreadSeedList)}`} (Einzelwerte im{" "}
                 <ExternalLink href={README_URL} testId="limits-readme-link">
                   README
                 </ExternalLink>{" "}
-                und{" "}
+                und in{" "}
                 <ExternalLink href={RUNS_URL} testId="limits-runs-link">
                   docs/runs
                 </ExternalLink>
-                ); die Seite zeigt sie nicht.
+                ). Sie zeigt nur, wie stark der Seed das Endmodell verschiebt
+                {hgbTraining ? ", und ist beim Gradient Boosting ohne Zufallsanteil 0" : ""}; über die Unsicherheit durch
+                die Daten sagt sie nichts.
               </>
             ) : null}{" "}
-            Konfidenzintervalle, etwa per Bootstrap über die Testknoten, sind nicht berechnet. Bei{" "}
-            {formatInteger(evaluation.testPositives)} Testknoten mit Label illegal können kleine Unterschiede zufällig
-            sein.
+            Konfidenzintervalle, etwa per Bootstrap über die Testknoten,
+            {hgbTraining ? " und eine Streuung des Gradient Boosting über Bootstrap-Stichproben der Trainingsknoten" : ""}{" "}
+            sind nicht berechnet. Bei {formatInteger(evaluation.testPositives)} Testknoten mit Label illegal können kleine
+            Unterschiede zufällig sein.
           </li>
           <li>
             Nur Knoten mit Label werden bewertet. Knoten ohne Label, darunter auch Musterknoten, gehen nicht in die
@@ -1337,12 +1526,15 @@ export default function NetzRadarPage() {
             {homophilyLimitConclusion(leadMeasured)}
           </li>
           {learned.length > 0 ? (
-            <li>
+            <li data-testid="supervision-limit">
               Überwacht gegen unüberwacht: Die Baselines sehen keine Labels, die gelernten Verfahren schon.
-              {mlp ? " Erst das MLP trennt die Wirkung der Labels von der der Nachbarschaft." : ""} Eine Baseline mit
-              gemittelten Nachbarmerkmalen ohne Labels fehlt noch. Ein starkes überwachtes Verfahren ohne Kanten (Random
-              Forest, Gradient Boosting) fehlt ebenfalls. Auf Elliptic lag bei Weber et al. (2019), gemessen mit dem
-              F1-Wert für das Label illegal, ein Random Forest vor dem GCN.
+              {hgb
+                ? ` ${joinList(
+                    edgeless.map((run) => (run.method === "hgb" ? "Gradient Boosting" : "MLP")),
+                  )} trennen die Wirkung der Labels von der der Nachbarschaft; mit dem Gradient Boosting ist ein starkes überwachtes Verfahren ohne Kanten gemessen. Offen bleibt, ob ein anderes Verfahren ohne Kanten näher an die Graph Neural Networks herankommt: Ein Random Forest und ein größerer Suchraum des Gradient Boosting (etwa Lernrate, Blattgröße und L2-Regularisierung) sind nicht gemessen.`
+                : `${mlp ? " Erst das MLP trennt die Wirkung der Labels von der der Nachbarschaft." : ""} Ein starkes überwachtes Verfahren ohne Kanten (Random Forest, Gradient Boosting) fehlt.`}{" "}
+              Auf Elliptic lag bei Weber et al. (2019), gemessen mit dem F1-Wert für das Label illegal, ein Random Forest
+              vor dem GCN. Eine Baseline mit gemittelten Nachbarmerkmalen ohne Labels fehlt noch.
             </li>
           ) : null}
           {firstTraining ? (
@@ -1350,10 +1542,8 @@ export default function NetzRadarPage() {
               Die Auswahl der gelernten Verfahren stützt sich auf einen kleinen Validierungsteil (Zeitschritte{" "}
               {formatStepRange(firstTraining.validationSteps)}). Unterschiede von wenigen Hundertsteln zwischen
               Kandidaten sind dort nicht belastbar.
-              {epochLimitRuns.length > 0
-                ? ` Bei ${joinList(
-                    epochLimitRuns.map(({ run }) => METHOD_SHORT_TEXT[run.method]),
-                  )} lag die gewählte Epoche auf der Obergrenze; ob mehr Epochen helfen, ist nicht gemessen.`
+              {limitRuns.length > 0
+                ? ` Bei ${joinList(limitRuns.map(({ run }) => METHOD_SHORT_TEXT[run.method]))} lag die Auswahl auf der Obergrenze; ob mehr ${limitUnit} helfen, ist nicht gemessen.`
                 : ""}
             </li>
           ) : null}
@@ -1366,7 +1556,8 @@ export default function NetzRadarPage() {
           ) : null}
           <li>
             Der Ausschnitt zeigt nur die Nachbarschaft der {formatInteger(seeds.length)} höchsten Isolation-Forest-Scores
-            und ist damit bewusst nicht repräsentativ für das ganze Netz.
+            {gnnLabel === null ? "" : ` und der ${formatInteger(gnnSeeds.length)} höchsten GNN-Scores`} und ist damit bewusst
+            nicht repräsentativ für das ganze Netz.
           </li>
           <li>Accuracy hängt von der gewählten Schwelle ab und ist deshalb nur Nebenwert.</li>
           {hasGnnRun ? null : <li>Die Graph Neural Networks fehlen noch; bis dahin ist die Fragestellung offen.</li>}

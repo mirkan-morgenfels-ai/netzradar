@@ -5,17 +5,26 @@ export type JsonObject = { [key: string]: JsonValue };
 export const NODE_LABELS = ["illicit", "licit", "unknown"] as const;
 export type NodeLabel = (typeof NODE_LABELS)[number];
 
-export const METHODS = ["zscore", "iforest", "gcn", "graphsage", "mlp"] as const;
+export const METHODS = ["zscore", "iforest", "hgb", "gcn", "graphsage", "mlp"] as const;
 export type Method = (typeof METHODS)[number];
 
 export const BASELINE_METHODS = ["zscore", "iforest"] as const;
 export type BaselineMethod = (typeof BASELINE_METHODS)[number];
 
-export const LEARNED_METHODS = ["gcn", "graphsage", "mlp"] as const;
+export const LEARNED_METHODS = ["hgb", "gcn", "graphsage", "mlp"] as const;
 export type LearnedMethod = (typeof LEARNED_METHODS)[number];
+
+export const NEURAL_METHODS = ["gcn", "graphsage", "mlp"] as const;
+export type NeuralMethod = (typeof NEURAL_METHODS)[number];
 
 export const GRAPH_METHODS = ["gcn", "graphsage"] as const;
 export type GraphMethod = (typeof GRAPH_METHODS)[number];
+
+export const EDGELESS_METHODS = ["hgb", "mlp"] as const;
+export type EdgelessMethod = (typeof EDGELESS_METHODS)[number];
+
+export const SEED_SETS = ["iforest", "gnn"] as const;
+export type SeedSet = (typeof SEED_SETS)[number];
 
 export const FEATURE_SETS = ["local", "local+graph"] as const;
 export type FeatureSet = (typeof FEATURE_SETS)[number];
@@ -29,7 +38,7 @@ export type EdgeMode = (typeof EDGE_MODES)[number];
 export const HOPS = [0, 1, 2] as const;
 export type Hop = (typeof HOPS)[number];
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 export type SchemaVersion = typeof SCHEMA_VERSION;
 
 export interface StepRange {
@@ -113,6 +122,16 @@ export interface SearchCandidate {
   selected: boolean;
 }
 
+export interface BoostingCandidate {
+  featureSet: FeatureSet;
+  positiveWeightRule: PositiveWeightRule;
+  positiveWeight: number;
+  maxLeafNodes: number;
+  validationPrAuc: number;
+  bestIteration: number;
+  selected: boolean;
+}
+
 export interface TrainingEnvironment {
   torch: string;
   torchGeometric: string;
@@ -122,7 +141,37 @@ export interface TrainingEnvironment {
   deterministicAlgorithms: boolean;
 }
 
-export interface Training {
+export interface BoostingEnvironment {
+  scikitLearn: string;
+  python: string;
+  platform: string;
+  threads: number;
+}
+
+export interface SeedSpread {
+  seeds: number[];
+  reportedSeed: number;
+  prAuc: number[];
+  mean: number;
+  min: number;
+  max: number;
+}
+
+interface TrainingBase {
+  positiveWeight: number;
+  positiveWeightRule: PositiveWeightRule;
+  edges: EdgeMode;
+  features: string[];
+  selectionMetric: "validationPrAuc";
+  validationPrAuc: number;
+  selectionSteps: StepRange;
+  validationSteps: StepRange;
+  finalFitSteps: StepRange;
+  seedSpread: SeedSpread;
+}
+
+export interface NeuralTraining extends TrainingBase {
+  kind: "neural";
   architecture: string;
   layers: number;
   hidden: number;
@@ -133,23 +182,35 @@ export interface Training {
   weightDecay: number;
   loss: string;
   score: string;
-  positiveWeight: number;
-  positiveWeightRule: PositiveWeightRule;
-  edges: EdgeMode;
   dtype: string;
   scaling: Scaling;
-  features: string[];
   maxEpochs: number;
   patience: number;
   selectedEpoch: number;
-  selectionMetric: "validationPrAuc";
-  validationPrAuc: number;
-  selectionSteps: StepRange;
-  validationSteps: StepRange;
-  finalFitSteps: StepRange;
   search: SearchCandidate[];
   environment: TrainingEnvironment;
 }
+
+export interface BoostingTraining extends TrainingBase {
+  kind: "boosting";
+  estimator: string;
+  loss: string;
+  score: string;
+  learningRate: number;
+  maxIter: number;
+  maxLeafNodes: number;
+  minSamplesLeaf: number;
+  l2Regularization: number;
+  maxBins: number;
+  maxFeatures: number;
+  earlyStopping: false;
+  randomState: number;
+  selectedIteration: number;
+  search: BoostingCandidate[];
+  environment: BoostingEnvironment;
+}
+
+export type Training = NeuralTraining | BoostingTraining;
 
 export interface Run {
   method: Method;
@@ -181,6 +242,7 @@ export interface Metrics {
 
 export interface NodeSelection {
   scoreField: "scoreIforest";
+  scoreFieldGnn: "scoreGnn" | null;
   pool: "test";
   seeds: number;
   hops: number;
@@ -198,7 +260,9 @@ export interface NetNode {
   scoreIforest: number;
   scoreGnn: number | null;
   seedRank: number | null;
-  hop: Hop;
+  seedRankGnn: number | null;
+  hop: Hop | null;
+  hopGnn: Hop | null;
   inDegree: number;
   outDegree: number;
 }

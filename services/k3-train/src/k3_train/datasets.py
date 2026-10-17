@@ -8,6 +8,7 @@ class DatasetInfo:
     license: str
     source: str
     publishable: bool
+    withheld_reason: str = ""
 
 
 SYNTHETIC = DatasetInfo(
@@ -24,9 +25,23 @@ ELLIPTIC = DatasetInfo(
     license="CC BY-NC-ND 4.0",
     source="Kaggle ellipticco/elliptic-data-set",
     publishable=False,
+    withheld_reason="Die Lizenz erlaubt keine Weitergabe bearbeiteter Fassungen.",
 )
 
-DATASETS = {info.name: info for info in (SYNTHETIC, ELLIPTIC)}
+IBM_AML = DatasetInfo(
+    name="ibm-aml",
+    display_name="IBM Transactions for Anti-Money Laundering (HI-Small)",
+    license="CDLA-Sharing-1.0",
+    source="Kaggle ealtman2019/ibm-transactions-for-anti-money-laundering-aml",
+    publishable=False,
+    withheld_reason=(
+        "Die öffentliche Demo bleibt das synthetische Netz; ein Ausschnitt wäre eine bearbeitete "
+        "Fassung, die unter CDLA-Sharing-1.0 mit Änderungshinweis stehen müsste, data/k3 steht "
+        "unter MIT."
+    ),
+)
+
+DATASETS = {info.name: info for info in (SYNTHETIC, ELLIPTIC, IBM_AML)}
 DATASET_NAMES = tuple(DATASETS)
 
 

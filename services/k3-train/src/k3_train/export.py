@@ -1,4 +1,5 @@
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,7 @@ SEED_COUNT = 50
 HOPS = 2
 MAX_NODES = 2000
 SCORE_FIELD = "scoreIforest"
+SCORE_FIELD_GNN = "scoreGnn"
 POOL = "test"
 LAYOUT_ITERATIONS = 100
 COMPONENT_FILL = 0.9
@@ -45,18 +47,17 @@ def _undirected_neighbours(edges: pd.DataFrame, allowed: set[str]) -> dict[str, 
     return neighbours
 
 
-def select_neighbourhood(
-    pool_ids: list[str],
-    scores: dict[str, float],
-    edges: pd.DataFrame,
-    seed_count: int = SEED_COUNT,
-    hops: int = HOPS,
-    max_nodes: int = MAX_NODES,
-) -> Selection:
-    ranked = sorted(pool_ids, key=lambda node: (-scores[node], node))
-    seeds = ranked[:seed_count]
+def _ranked(pool_ids: list[str], scores: Mapping[str, float]) -> list[str]:
+    return sorted(pool_ids, key=lambda node: (-scores[node], node))
+
+
+def _published_ranks(pool_ids: list[str], scores: Mapping[str, float]) -> dict[str, int]:
+    ranked = sorted(pool_ids, key=lambda node: (-round(scores[node], FLOAT_DIGITS), node))
+    return {node: rank for rank, node in enumerate(ranked, start=1)}
+
+
+def _distances(seeds: list[str], neighbours: dict[str, set[str]], hops: int) -> dict[str, int]:
     hop_of = dict.fromkeys(seeds, 0)
-    neighbours = _undirected_neighbours(edges, set(pool_ids))
     frontier = seeds
     for distance in range(1, hops + 1):
         reached = sorted(
@@ -70,19 +71,53 @@ def select_neighbourhood(
         for node in reached:
             hop_of[node] = distance
         frontier = reached
-    seed_rank = {node: rank for rank, node in enumerate(seeds, start=1)}
-    frame = pd.DataFrame(
-        {
-            "node_id": list(hop_of),
-            "hop": list(hop_of.values()),
-        }
-    )
-    frame["seed_rank"] = frame["node_id"].map(seed_rank).astype("Int64")
-    frame["sort_score"] = frame["node_id"].map(lambda node: -round(scores[node], FLOAT_DIGITS))
-    frame = frame.sort_values(["hop", "sort_score", "node_id"], ignore_index=True)
+    return hop_of
+
+
+def select_neighbourhood(
+    pool_ids: list[str],
+    scores: Mapping[str, float],
+    edges: pd.DataFrame,
+    seed_count: int = SEED_COUNT,
+    hops: int = HOPS,
+    max_nodes: int = MAX_NODES,
+    gnn_scores: Mapping[str, float] | None = None,
+) -> Selection:
+    neighbours = _undirected_neighbours(edges, set(pool_ids))
+    score_sets = {"": scores} if gnn_scores is None else {"": scores, "_gnn": gnn_scores}
+    hop_columns: dict[str, dict[str, int]] = {}
+    rank_columns: dict[str, dict[str, int]] = {}
+    published: dict[str, dict[str, int]] = {}
+    for suffix, values in score_sets.items():
+        seeds = _ranked(pool_ids, values)[:seed_count]
+        hop_columns[suffix] = _distances(seeds, neighbours, hops)
+        rank_columns[suffix] = {node: rank for rank, node in enumerate(seeds, start=1)}
+        published[suffix] = _published_ranks(pool_ids, values)
+    members = sorted(set().union(*hop_columns.values()))
+    frame = pd.DataFrame({"node_id": members})
+    for suffix in ("", "_gnn"):
+        frame[f"hop{suffix}"] = frame["node_id"].map(hop_columns.get(suffix, {})).astype("Int64")
+        frame[f"seed_rank{suffix}"] = (
+            frame["node_id"].map(rank_columns.get(suffix, {})).astype("Int64")
+        )
+
+    def sort_key(node: str) -> tuple[int, int]:
+        reached = {suffix: hop_of[node] for suffix, hop_of in hop_columns.items() if node in hop_of}
+        distance = min(reached.values())
+        rank = min(published[suffix][node] for suffix, hop in reached.items() if hop == distance)
+        return distance, rank
+
+    keys = frame["node_id"].map(sort_key)
+    frame["sort_distance"] = [key[0] for key in keys]
+    frame["sort_rank"] = [key[1] for key in keys]
+    frame = frame.sort_values(["sort_distance", "sort_rank", "node_id"], ignore_index=True)
     truncated = len(frame) > max_nodes
-    frame = frame.head(max_nodes).drop(columns="sort_score").reset_index(drop=True)
-    return Selection(nodes=frame, truncated=truncated)
+    frame = frame.head(max_nodes).drop(columns=["sort_distance", "sort_rank"])
+    return Selection(nodes=frame.reset_index(drop=True), truncated=truncated)
+
+
+def _optional_int(value: Any) -> int | None:
+    return None if pd.isna(value) else int(value)
 
 
 def induced_edges(edges: pd.DataFrame, node_ids: set[str]) -> pd.DataFrame:
@@ -164,7 +199,15 @@ def nodes_payload(
         else gnn.scores.set_index("node_id")[score_column(gnn_method)]
     )
     iforest = scores["score_iforest"].to_dict()
-    selection = select_neighbourhood(pool_ids, iforest, dataset.edges, seed_count, hops, max_nodes)
+    selection = select_neighbourhood(
+        pool_ids,
+        iforest,
+        dataset.edges,
+        seed_count,
+        hops,
+        max_nodes,
+        None if gnn_scores is None else gnn_scores.to_dict(),
+    )
     selected_ids = set(selection.nodes["node_id"])
     sub_edges = induced_edges(dataset.edges, selected_ids)
     positions = layout_positions(list(selected_ids), sub_edges, seed)
@@ -184,8 +227,10 @@ def nodes_payload(
                 "scoreZscore": float(scores.at[node, "score_zscore"]),
                 "scoreIforest": float(scores.at[node, "score_iforest"]),
                 "scoreGnn": None if gnn_scores is None else float(gnn_scores.at[node]),
-                "seedRank": None if pd.isna(row.seed_rank) else int(row.seed_rank),
-                "hop": int(row.hop),
+                "seedRank": _optional_int(row.seed_rank),
+                "seedRankGnn": _optional_int(row.seed_rank_gnn),
+                "hop": _optional_int(row.hop),
+                "hopGnn": _optional_int(row.hop_gnn),
                 "inDegree": int(measures.at[node, "g_in_degree"]),
                 "outDegree": int(measures.at[node, "g_out_degree"]),
             }
@@ -194,6 +239,7 @@ def nodes_payload(
         "schemaVersion": SCHEMA_VERSION,
         "selection": {
             "scoreField": SCORE_FIELD,
+            "scoreFieldGnn": None if gnn_scores is None else SCORE_FIELD_GNN,
             "pool": POOL,
             "seeds": seed_count,
             "hops": hops,
@@ -232,7 +278,7 @@ def build_exports(
     nodes, selected = nodes_payload(
         dataset, output, split, output.seed, seed_count, hops, max_nodes, gnn
     )
-    extra_runs = [] if gnn is None else gnn.runs
+    extra_runs = [] if gnn is None else gnn.runs_with_spread()
     return ExportBundle(
         metrics=round_floats(metrics_payload(output, generated_at, extra_runs)),
         nodes=round_floats(nodes),

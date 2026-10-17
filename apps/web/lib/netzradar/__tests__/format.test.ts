@@ -14,8 +14,11 @@ import {
   formatPercent,
   formatPlainNumber,
   formatShare,
+  formatSeedList,
   formatStepRange,
   joinList,
+  seedSetButtonText,
+  seedSetScoreText,
   withMinusSign,
 } from "../format";
 import { METHODS } from "../types";
@@ -121,9 +124,12 @@ describe("method texts", () => {
       expect(Object.keys(texts)).toEqual([...METHODS]);
     }
     expect(METHOD_TEXT.mlp).toBe("MLP ohne Kanten (Kontrolle)");
+    expect(METHOD_TEXT.hgb).toBe("Gradient Boosting (ohne Kanten)");
+    expect(METHOD_KIND_TEXT.hgb).toMatch(/ohne Kanten/);
     expect(METHOD_SHORT_TEXT).toEqual({
       zscore: "Z-Scores",
       iforest: "Isolation Forest",
+      hgb: "Gradient Boosting",
       gcn: "GCN",
       graphsage: "GraphSAGE",
       mlp: "MLP (ohne Kanten)",
@@ -137,6 +143,11 @@ describe("joinList", () => {
     expect(joinList(["GCN"])).toBe("GCN");
     expect(joinList(["GCN", "GraphSAGE"])).toBe("GCN und GraphSAGE");
     expect(joinList(["Z-Scores", "GCN", "MLP"])).toBe("Z-Scores, GCN und MLP");
+  });
+
+  it("joins alternatives with oder", () => {
+    expect(joinList(["7", "31"], "oder")).toBe("7 oder 31");
+    expect(joinList(["1", "2", "3"], "oder")).toBe("1, 2 oder 3");
   });
 });
 
@@ -152,5 +163,25 @@ describe("negative decimals", () => {
     expect(withMinusSign("-0,5")).toBe("−0,5");
     expect(withMinusSign("0,5")).toBe("0,5");
     expect(withMinusSign("A-B")).toBe("A-B");
+  });
+});
+
+describe("seed lists and start sets", () => {
+  it("writes consecutive seeds as a range and other seeds as a list", () => {
+    expect(formatSeedList([46, 42, 43, 44, 45])).toBe("42 bis 46");
+    expect(formatSeedList([42, 43])).toBe("42 und 43");
+    expect(formatSeedList([1, 5, 9])).toBe("1, 5 und 9");
+    expect(formatSeedList([42])).toBe("42");
+    expect(formatSeedList([])).toBe("");
+  });
+
+  it("names both start sets by their score without label words", () => {
+    expect(seedSetButtonText("iforest", "GraphSAGE")).toBe("Isolation Forest");
+    expect(seedSetButtonText("gnn", "GraphSAGE")).toBe("GNN (GraphSAGE)");
+    expect(seedSetScoreText("iforest", "GraphSAGE")).toBe("Isolation-Forest-Score");
+    expect(seedSetScoreText("gnn", "GCN")).toBe("GNN-Score (GCN)");
+    for (const text of [seedSetScoreText("gnn", "GCN"), seedSetButtonText("gnn", "GCN")]) {
+      expect(text).not.toMatch(/legal|auffällig/);
+    }
   });
 });

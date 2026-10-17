@@ -14,6 +14,7 @@ from k3_train.baseline import (
     zscore_for_split,
     zscore_hyperparameters,
 )
+from k3_train.boosting import HGB_DISPLAY_NAME, HGB_METHOD, HgbConfig, run_hgb
 from k3_train.datasets import dataset_info
 from k3_train.features import feature_matrix
 from k3_train.graph import GRAPH_FEATURES, graph_measures_with_report, label_homophily
@@ -23,9 +24,10 @@ from k3_train.metrics import evaluate_scores, evaluation_summary, evaluation_tar
 from k3_train.split import check_split, split_for, split_masks
 
 DEFAULT_SEED = 42
-SCHEMA_VERSION = 3
-METHODS = ("zscore", "iforest", "gcn", "graphsage", "mlp")
-SCORE_COLUMNS = ("score_zscore", "score_iforest")
+SCHEMA_VERSION = 4
+METHODS = ("zscore", "iforest", "hgb", "gcn", "graphsage", "mlp")
+UNSUPERVISED_SCORE_COLUMNS = ("score_zscore", "score_iforest")
+SCORE_COLUMNS = (*UNSUPERVISED_SCORE_COLUMNS, "score_hgb")
 
 
 class RunContext(Protocol):
@@ -86,7 +88,12 @@ def dataset_block(dataset: Dataset) -> dict[str, Any]:
     }
 
 
-def run_baseline(dataset: Dataset, run_date: str, seed: int = DEFAULT_SEED) -> BaselineOutput:
+def run_baseline(
+    dataset: Dataset,
+    run_date: str,
+    seed: int = DEFAULT_SEED,
+    hgb_config: HgbConfig | None = None,
+) -> BaselineOutput:
     nodes = dataset.nodes
     split = split_for(dataset.name, dataset.time_steps)
     crossing = check_split(nodes, dataset.edges, split)
@@ -100,6 +107,7 @@ def run_baseline(dataset: Dataset, run_date: str, seed: int = DEFAULT_SEED) -> B
     iforest_scores = iforest_for_split(full_values, train, seed=seed)
 
     evaluated, y = evaluation_target(nodes["label"], masks["test"])
+    hgb = run_hgb(nodes, measures, split, evaluated, y, seed, hgb_config)
     runs = []
     for spec, scores, hyperparameters in (
         (ZSCORE, zscores, zscore_hyperparameters(local_names, robust_stats)),
@@ -120,11 +128,23 @@ def run_baseline(dataset: Dataset, run_date: str, seed: int = DEFAULT_SEED) -> B
                 **evaluate_scores(y, scores[evaluated]),
             }
         )
+    runs.append(
+        {
+            "method": HGB_METHOD,
+            "displayName": HGB_DISPLAY_NAME,
+            "featureSet": hgb.feature_set,
+            "seed": seed,
+            "date": run_date,
+            "hyperparameters": hgb.hyperparameters,
+            **hgb.metrics,
+        }
+    )
     score_frame = pd.DataFrame(
         {
             "node_id": nodes["node_id"].to_numpy(),
             "score_zscore": zscores,
             "score_iforest": iforest_scores,
+            "score_hgb": hgb.scores,
         }
     )
     return BaselineOutput(
@@ -207,7 +227,11 @@ def load_baseline(out_dir: Path) -> BaselineOutput:
     )
     missing = [column for column in GRAPH_FEATURES if column not in measures.columns]
     if missing or any(column not in scores.columns for column in SCORE_COLUMNS):
-        raise ValueError("Baseline-Dateien sind unvollstaendig")
+        raise ValueError(
+            "Baseline-Dateien sind unvollständig oder veraltet "
+            "(fehlende Graphmaße oder Scores, etwa score_hgb). "
+            "Bitte k3-train baseline erneut ausführen."
+        )
     return BaselineOutput(
         dataset=summary["dataset"],
         split=summary["split"],

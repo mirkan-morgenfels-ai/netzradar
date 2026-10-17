@@ -45,17 +45,19 @@ class GnnOutput:
             SPREAD_KEY: self.seed_spread,
         }
 
-    def run_logs(self) -> list[dict[str, Any]]:
-        logs = []
+    def runs_with_spread(self) -> list[dict[str, Any]]:
+        runs = []
         for run in self.runs:
             spread = self.seed_spread.get(run["method"])
-            hyperparameters = (
-                run["hyperparameters"]
-                if spread is None
-                else with_seed_spread(run["hyperparameters"], spread)
+            if spread is None:
+                raise ValueError(f"Seed-Streuung fehlt für {run['method']}")
+            runs.append(
+                {**run, "hyperparameters": with_seed_spread(run["hyperparameters"], spread)}
             )
-            logs.append(run_log(self, {**run, "hyperparameters": hyperparameters}))
-        return logs
+        return runs
+
+    def run_logs(self) -> list[dict[str, Any]]:
+        return [run_log(self, run) for run in self.runs_with_spread()]
 
 
 def with_seed_spread(hyperparameters: dict[str, Any], spread: dict[str, Any]) -> dict[str, Any]:

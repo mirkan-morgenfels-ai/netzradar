@@ -17,7 +17,8 @@ from contract import (
     validate_nodes,
     validate_run_log,
 )
-from k3_train import cli, gnn_pipeline
+from k3_train import boosting, cli, gnn_pipeline
+from k3_train.boosting import HgbConfig
 from k3_train.export import ExportBundle, build_exports, write_exports
 from k3_train.features import FEATURE_SETS, feature_matrix
 from k3_train.gnn import GnnConfig
@@ -25,15 +26,16 @@ from k3_train.gnn_pipeline import run_gnn
 from k3_train.gnn_results import GnnOutput, load_gnn, save_gnn, score_column
 from k3_train.jsonio import dumps, read_json
 from k3_train.load import Dataset
-from k3_train.pipeline import BaselineOutput
+from k3_train.pipeline import METHODS, BaselineOutput
 from k3_train.runs import write_run_logs
-from k3_train.split import split_for
+from k3_train.split import split_for, split_masks
 from k3_train.synth import SMALL_CONFIG
 from k3_train.training import fit_scaler, training_parts, transform
 
 RUN_DATE = "2026-01-01"
 GENERATED_AT = "2026-01-01T00:00:00Z"
 CONFIG = GnnConfig(max_epochs=30, patience=10, spread_seeds=(42, 43))
+LIGHT_HGB = HgbConfig(max_iter=25, spread_seeds=(42, 43))
 
 
 @pytest.fixture(scope="module")
@@ -65,6 +67,7 @@ def test_smoke_run_follows_the_contract(
     assert [run["method"] for run in gnn_bundle.metrics["runs"]] == [
         "zscore",
         "iforest",
+        "hgb",
         "gcn",
         "graphsage",
         "mlp",
@@ -94,7 +97,14 @@ def test_smoke_run_follows_the_contract(
         assert validate_run_log(log) == []
         assert log["hyperparameters"]["seedSpread"]["seeds"] == [42, 43]
         assert log["hyperparameters"]["seedSpread"]["prAuc"][0] == log["prAuc"]
-    assert all("seedSpread" not in run["hyperparameters"] for run in gnn_bundle.metrics["runs"])
+    published = {run["method"]: run for run in gnn_bundle.metrics["runs"]}
+    for path in paths:
+        log = read_json(path)
+        assert published[log["method"]]["hyperparameters"] == log["hyperparameters"]
+    for method in ("hgb", "gcn", "graphsage", "mlp"):
+        assert list(published[method]["hyperparameters"])[-2:] == ["seedSpread", "environment"]
+    for method in ("zscore", "iforest"):
+        assert "seedSpread" not in published[method]["hyperparameters"]
 
 
 def test_class_weights_come_from_the_loss_labels(small_gnn: GnnOutput) -> None:
@@ -218,7 +228,7 @@ def test_gnn_run_is_deterministic(
 
 
 def test_export_fills_score_gnn(
-    gnn_bundle: ExportBundle, small_gnn: GnnOutput, tmp_path: Path
+    gnn_bundle: ExportBundle, small_gnn: GnnOutput, small_dataset: Dataset, tmp_path: Path
 ) -> None:
     assert validate_nodes(gnn_bundle.nodes) == []
     method = gnn_bundle.nodes["scoreGnnMethod"]
@@ -227,6 +237,18 @@ def test_export_fills_score_gnn(
     scores = small_gnn.scores.set_index("node_id")[score_column(method)]
     for node in gnn_bundle.nodes["nodes"]:
         assert node["scoreGnn"] == round(float(scores.at[node["id"]]), 4)
+    assert gnn_bundle.nodes["selection"]["scoreFieldGnn"] == "scoreGnn"
+    split = split_for(small_dataset.name, small_dataset.time_steps)
+    test_mask = split_masks(small_dataset.nodes, split)["test"]
+    test_ids = small_dataset.nodes.loc[test_mask, "node_id"].tolist()
+    expected = sorted(test_ids, key=lambda node: (-scores.at[node], node))[:50]
+    seeds = sorted(
+        (node for node in gnn_bundle.nodes["nodes"] if node["seedRankGnn"] is not None),
+        key=lambda node: node["seedRankGnn"],
+    )
+    assert [node["id"] for node in seeds] == expected
+    assert all(node["hopGnn"] == 0 for node in seeds)
+    assert sum(node["seedRank"] is not None for node in gnn_bundle.nodes["nodes"]) == 50
     assert (
         validate_edges(gnn_bundle.edges, {node["id"] for node in gnn_bundle.nodes["nodes"]}) == []
     )
@@ -234,7 +256,7 @@ def test_export_fills_score_gnn(
     second = write_exports(gnn_bundle, tmp_path / "second")
     for left, right in zip(first, second, strict=True):
         assert left.read_bytes() == right.read_bytes()
-        assert left.read_bytes().startswith(b'{\n  "schemaVersion": 3,')
+        assert left.read_bytes().startswith(b'{\n  "schemaVersion": 4,')
 
 
 def test_export_rejects_gnn_results_of_other_data(
@@ -258,6 +280,7 @@ def test_cli_runs_data_baseline_gnn_and_export(
     runs_dir = tmp_path / "runs"
     export_dir = tmp_path / "k3"
     monkeypatch.setattr(cli, "SynthConfig", lambda: SMALL_CONFIG)
+    monkeypatch.setattr(boosting, "HgbConfig", lambda: LIGHT_HGB)
     monkeypatch.setattr(cli, "RUNS_DIR", runs_dir)
     monkeypatch.setattr(cli, "EXPORT_DIR", export_dir)
     data_dir = str(tmp_path / "data")
@@ -270,5 +293,12 @@ def test_cli_runs_data_baseline_gnn_and_export(
     assert validate_metrics(metrics) == []
     assert validate_nodes(nodes) == []
     assert nodes["scoreGnnMethod"] in ("gcn", "graphsage")
-    assert len(list(runs_dir.glob("*_synthetic_*.json"))) == 5
-    assert all(run["hyperparameters"].get("maxEpochs", 2) == 2 for run in metrics["runs"][2:])
+    assert len(list(runs_dir.glob("*_synthetic_*.json"))) == 6
+    assert [run["method"] for run in metrics["runs"]] == list(METHODS)
+    assert all(run["hyperparameters"]["maxEpochs"] == 2 for run in metrics["runs"][3:])
+    assert metrics["runs"][2]["hyperparameters"]["maxIter"] == 25
+    logs = {path.name: path.read_bytes() for path in runs_dir.glob("*.json")}
+    for path in runs_dir.glob("*.json"):
+        path.unlink()
+    assert cli.main(["runs", "--data-dir", data_dir]) == 0
+    assert {path.name: path.read_bytes() for path in runs_dir.glob("*.json")} == logs
