@@ -1,4 +1,4 @@
-import type { FeatureSet, Method, NodeLabel, StepRange } from "./types";
+import type { FeatureSet, Method, NodeLabel, SeedSet, StepRange } from "./types";
 
 const LOCALE = "de-DE";
 const MINUS_SIGN = "−";
@@ -26,6 +26,7 @@ export function accuracyThresholdText(text: string): string {
 export const METHOD_TEXT: Record<Method, string> = {
   zscore: "Robuste Z-Scores",
   iforest: "Isolation Forest",
+  hgb: "Gradient Boosting (ohne Kanten)",
   gcn: "GCN (Graph Convolutional Network)",
   graphsage: "GraphSAGE",
   mlp: "MLP ohne Kanten (Kontrolle)",
@@ -34,6 +35,7 @@ export const METHOD_TEXT: Record<Method, string> = {
 export const METHOD_SHORT_TEXT: Record<Method, string> = {
   zscore: "Z-Scores",
   iforest: "Isolation Forest",
+  hgb: "Gradient Boosting",
   gcn: "GCN",
   graphsage: "GraphSAGE",
   mlp: "MLP (ohne Kanten)",
@@ -42,6 +44,7 @@ export const METHOD_SHORT_TEXT: Record<Method, string> = {
 export const METHOD_KIND_TEXT: Record<Method, string> = {
   zscore: "Baseline ohne Labels",
   iforest: "Baseline ohne Labels",
+  hgb: "Starkes Verfahren ohne Kanten: Entscheidungsbäume, mit Labels trainiert",
   gcn: "Graph Neural Network, mit Labels trainiert, bezieht die Nachbarschaft ein",
   graphsage: "Graph Neural Network, mit Labels trainiert, bezieht die Nachbarschaft ein",
   mlp: "Kontrolle: gleiche Größe, Labels und Auswahl, aber ohne Kanten",
@@ -87,9 +90,26 @@ export function formatShare(count: number, total: number, digits = 1): string {
   return formatPercent(count / total, digits);
 }
 
-export function joinList(items: readonly string[]): string {
+export function joinList(items: readonly string[], conjunction: "und" | "oder" = "und"): string {
   if (items.length <= 1) return items.join("");
-  return `${items.slice(0, -1).join(", ")} und ${items[items.length - 1]}`;
+  return `${items.slice(0, -1).join(", ")} ${conjunction} ${items[items.length - 1]}`;
+}
+
+export function formatSeedList(seeds: readonly number[]): string {
+  const sorted = [...seeds].sort((a, b) => a - b);
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  if (first === undefined || last === undefined) return "";
+  const consecutive = sorted.length > 2 && sorted.every((seed, index) => seed === first + index);
+  return consecutive ? `${first} bis ${last}` : joinList(sorted.map(String));
+}
+
+export function seedSetButtonText(set: SeedSet, gnnLabel: string): string {
+  return set === "gnn" ? `GNN (${gnnLabel})` : "Isolation Forest";
+}
+
+export function seedSetScoreText(set: SeedSet, gnnLabel: string): string {
+  return set === "gnn" ? `GNN-Score (${gnnLabel})` : "Isolation-Forest-Score";
 }
 
 export function formatStepRange(range: StepRange): string {

@@ -18,7 +18,13 @@ from k3_train.gnn import (
 )
 from k3_train.gnn_results import DISPLAY_NAMES, GnnOutput, score_column
 from k3_train.load import Dataset
-from k3_train.metrics import evaluate_scores, evaluation_summary, evaluation_target, pr_auc
+from k3_train.metrics import (
+    evaluate_scores,
+    evaluation_summary,
+    evaluation_target,
+    pr_auc,
+    seed_spread_summary,
+)
 from k3_train.pipeline import DEFAULT_SEED, dataset_block
 from k3_train.split import TemporalSplit, check_split, split_for, split_masks
 from k3_train.training import (
@@ -185,14 +191,7 @@ def seed_spread(
             continue
         scores = final_scores(architecture, scaled, prepared, weight, epochs, config, other)
         values.append(pr_auc(prepared.y, scores[prepared.evaluated]))
-    return {
-        "seeds": list(config.spread_seeds),
-        "reportedSeed": seed,
-        "prAuc": values,
-        "mean": float(np.mean(values)),
-        "min": float(np.min(values)),
-        "max": float(np.max(values)),
-    }
+    return seed_spread_summary(config.spread_seeds, seed, values)
 
 
 def gnn_hyperparameters(

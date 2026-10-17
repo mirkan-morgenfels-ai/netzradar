@@ -3,25 +3,33 @@
 import { useCallback, useMemo, useState } from "react";
 import { METHOD_SHORT_TEXT } from "@/lib/netzradar/format";
 import { buildAdjacency, neighborsOf, seedNodes } from "@/lib/netzradar/graph";
-import type { GraphMethod, NetEdge, NetNode } from "@/lib/netzradar/types";
+import type { GraphMethod, NetEdge, NetNode, SeedSet } from "@/lib/netzradar/types";
 import { GraphLegend } from "./GraphLegend";
 import { GraphView } from "./GraphView";
 import { NodeDetail } from "./NodeDetail";
+import { SeedSetSwitch } from "./SeedSetSwitch";
 import { TopNodesTable } from "./TopNodesTable";
 
 export interface NetzRadarExplorerProps {
   nodes: NetNode[];
   edges: NetEdge[];
   scoreGnnMethod: GraphMethod | null;
-  description: string;
+  hops: number;
+  descriptions: Record<SeedSet, string>;
 }
 
-export function NetzRadarExplorer({ nodes, edges, scoreGnnMethod, description }: NetzRadarExplorerProps) {
+export function NetzRadarExplorer({ nodes, edges, scoreGnnMethod, hops, descriptions }: NetzRadarExplorerProps) {
   const gnnLabel = scoreGnnMethod === null ? null : METHOD_SHORT_TEXT[scoreGnnMethod];
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [chosenSet, setChosenSet] = useState<SeedSet>("iforest");
+  const seedSet: SeedSet = gnnLabel === null ? "iforest" : chosenSet;
   const adjacency = useMemo(() => buildAdjacency(nodes.map((node) => node.id), edges), [nodes, edges]);
   const byId = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
-  const seeds = useMemo(() => seedNodes(nodes), [nodes]);
+  const seeds = useMemo(() => seedNodes(nodes, seedSet), [nodes, seedSet]);
+  const seedCounts = useMemo(
+    () => ({ iforest: seedNodes(nodes, "iforest").length, gnn: seedNodes(nodes, "gnn").length }),
+    [nodes],
+  );
   const select = useCallback((id: string | null) => setSelectedId(id), []);
 
   const selected = selectedId === null ? null : (byId.get(selectedId) ?? null);
@@ -35,29 +43,41 @@ export function NetzRadarExplorer({ nodes, edges, scoreGnnMethod, description }:
   return (
     <div className="grid gap-6 lg:grid-cols-3 lg:gap-8" data-testid="netzradar-explorer">
       <div className="min-w-0 space-y-4 lg:col-span-2">
+        {gnnLabel === null ? null : (
+          <SeedSetSwitch nodes={nodes} active={seedSet} gnnLabel={gnnLabel} hops={hops} onChange={setChosenSet} />
+        )}
         <GraphView
           nodes={nodes}
           edges={edges}
           adjacency={adjacency}
+          seedSet={seedSet}
           selectedId={selectedId}
           onSelect={select}
-          description={description}
+          description={descriptions[seedSet]}
         />
-        <GraphLegend />
+        <GraphLegend twoSeedSets={gnnLabel !== null} />
       </div>
       <div className="min-w-0 lg:col-start-3 lg:row-span-2 lg:row-start-1">
         <div className="lg:sticky lg:top-36 lg:-mx-3 lg:max-h-[calc(100dvh-10rem)] lg:overflow-y-auto lg:overscroll-contain lg:px-3 lg:pb-8 lg:[mask-image:linear-gradient(to_bottom,#000_calc(100%-2rem),transparent)]">
           <NodeDetail
             node={selected}
             neighbors={neighbors}
-            seedCount={seeds.length}
+            seedCounts={seedCounts}
+            hops={hops}
             gnnLabel={gnnLabel}
             onSelect={select}
           />
         </div>
       </div>
       <div className="min-w-0 lg:col-span-2">
-        <TopNodesTable nodes={seeds} selectedId={selectedId} gnnLabel={gnnLabel} onSelect={select} />
+        <TopNodesTable
+          key={seedSet}
+          nodes={seeds}
+          seedSet={seedSet}
+          selectedId={selectedId}
+          gnnLabel={gnnLabel}
+          onSelect={select}
+        />
       </div>
     </div>
   );

@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 
 from contract import validate_edges, validate_metrics, validate_nodes
+from k3_train.boosting import HgbConfig
 from k3_train.export import (
     ExportBundle,
     build_exports,
@@ -23,6 +24,7 @@ from k3_train.split import split_for, split_masks
 from k3_train.synth import SMALL_CONFIG
 
 GENERATED_AT = "2026-01-01T00:00:00Z"
+LIGHT = HgbConfig(max_iter=25, spread_seeds=(42,))
 LAYOUT_PROBE = "\n".join(
     [
         "import json",
@@ -47,8 +49,12 @@ def node_ids(bundle: ExportBundle) -> set[str]:
 
 def test_metrics_follow_the_contract(bundle: ExportBundle) -> None:
     assert validate_metrics(bundle.metrics) == []
-    assert [run["method"] for run in bundle.metrics["runs"]] == ["zscore", "iforest"]
-    assert [run["featureSet"] for run in bundle.metrics["runs"]] == ["local", "local+graph"]
+    assert [run["method"] for run in bundle.metrics["runs"]] == ["zscore", "iforest", "hgb"]
+    assert [run["featureSet"] for run in bundle.metrics["runs"]] == [
+        "local",
+        "local+graph",
+        "local+graph",
+    ]
     assert bundle.metrics["dataset"]["name"] == "synthetic"
     assert bundle.metrics["dataset"]["generator"]["seed"] == 42
     assert bundle.metrics["dataset"]["features"] == 12
@@ -67,8 +73,12 @@ def test_nodes_follow_the_contract(bundle: ExportBundle) -> None:
     assert list(bundle.nodes) == ["schemaVersion", "selection", "scoreGnnMethod", "nodes"]
     assert bundle.nodes["scoreGnnMethod"] is None
     assert all(node["scoreGnn"] is None for node in bundle.nodes["nodes"])
+    assert all(node["seedRankGnn"] is None for node in bundle.nodes["nodes"])
+    assert all(node["hopGnn"] is None for node in bundle.nodes["nodes"])
+    assert all(node["hop"] in (0, 1, 2) for node in bundle.nodes["nodes"])
     assert bundle.nodes["selection"] == {
         "scoreField": "scoreIforest",
+        "scoreFieldGnn": None,
         "pool": "test",
         "seeds": 50,
         "hops": 2,
@@ -150,6 +160,28 @@ def test_select_neighbourhood_hand_example() -> None:
     assert selection.truncated is False
 
 
+def test_select_neighbourhood_with_gnn_seeds_by_hand() -> None:
+    edges = pd.DataFrame({"source": ["a", "b", "c", "d", "x"], "target": ["b", "c", "d", "e", "y"]})
+    iforest = {"a": 0.9, "b": 0.1, "c": 0.2, "d": 0.3, "e": 0.05, "x": 0.5, "y": 0.4}
+    gnn = {"a": -1.0, "b": 0.0, "c": 1.0, "d": 2.0, "e": 5.0, "x": -2.0, "y": -3.0}
+    pool = ["a", "b", "c", "d", "e", "x", "y"]
+    selection = select_neighbourhood(pool, iforest, edges, 1, 2, 100, gnn_scores=gnn)
+    frame = selection.nodes
+    assert frame["node_id"].tolist() == ["a", "e", "d", "b", "c"]
+    assert frame["hop"].tolist() == [0, pd.NA, pd.NA, 1, 2]
+    assert frame["hop_gnn"].tolist() == [pd.NA, 0, 1, pd.NA, 2]
+    assert frame["seed_rank"].tolist() == [1, pd.NA, pd.NA, pd.NA, pd.NA]
+    assert frame["seed_rank_gnn"].tolist() == [pd.NA, 1, pd.NA, pd.NA, pd.NA]
+    assert selection.truncated is False
+    cut = select_neighbourhood(pool, iforest, edges, 1, 2, 3, gnn_scores=gnn)
+    assert cut.nodes["node_id"].tolist() == ["a", "e", "d"]
+    assert cut.truncated is True
+    plain = select_neighbourhood(pool, iforest, edges, 1, 2, 100)
+    assert plain.nodes["node_id"].tolist() == ["a", "b", "c"]
+    assert plain.nodes["hop_gnn"].isna().all()
+    assert plain.nodes["seed_rank_gnn"].isna().all()
+
+
 def test_induced_edges_drop_outside_nodes() -> None:
     edges = pd.DataFrame({"source": ["b", "a", "a"], "target": ["c", "b", "z"]})
     subset = induced_edges(edges, {"a", "b", "c"})
@@ -166,7 +198,7 @@ def test_export_files_are_formatted_and_byte_identical(
         assert content == right.read_bytes()
         assert b"\r" not in content
         assert content.endswith(b"}\n")
-        assert content.startswith(b'{\n  "schemaVersion": 3,')
+        assert content.startswith(b'{\n  "schemaVersion": 4,')
 
 
 def test_layout_does_not_depend_on_the_hash_seed() -> None:
@@ -186,7 +218,7 @@ def test_layout_does_not_depend_on_the_hash_seed() -> None:
 def test_full_pipeline_is_deterministic() -> None:
     def run_once() -> ExportBundle:
         dataset = load_synthetic(SMALL_CONFIG)
-        output = run_baseline(dataset, run_date="2026-01-01")
+        output = run_baseline(dataset, run_date="2026-01-01", hgb_config=LIGHT)
         return build_exports(dataset, output, generated_at=GENERATED_AT)
 
     first = run_once()

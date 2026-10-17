@@ -118,7 +118,7 @@ def _normalise_nodes(nodes: pd.DataFrame) -> pd.DataFrame:
     return nodes.sort_values(["time_step", "node_id"], ignore_index=True)
 
 
-def _build(
+def build_dataset(
     name: str,
     nodes: pd.DataFrame,
     edges: pd.DataFrame,
@@ -146,7 +146,7 @@ def _build(
 
 def load_synthetic(config: SynthConfig | None = None) -> Dataset:
     result = generate(config)
-    return _build(
+    return build_dataset(
         "synthetic",
         result.nodes,
         result.edges,
@@ -217,7 +217,7 @@ def load_elliptic(raw_dir: Path, aggregated_count: int | None = None) -> Dataset
         "localFeatures": feature_count - aggregated_count,
         "aggregatedFeatures": aggregated_count,
     }
-    return _build("elliptic", nodes, edges, notes=notes)
+    return build_dataset("elliptic", nodes, edges, notes=notes)
 
 
 def write_processed(dataset: Dataset, out_dir: Path) -> None:

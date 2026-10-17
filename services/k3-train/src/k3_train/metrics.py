@@ -1,4 +1,5 @@
 import math
+from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
@@ -14,6 +15,7 @@ CURVE_POINTS = 101
 RANDOM_PERMUTATIONS = 10_000
 RANDOM_QUANTILE = 0.95
 RANDOM_CHUNK = 1000
+RANDOM_MAX_CELLS = 1_000_000
 ACCURACY_THRESHOLD_TEXT = (
     "oberste 2 % der Test-Scores (gelabelte Testknoten) gelten als auffällig, "
     "Gleichstände an der Schwelle eingeschlossen"
@@ -99,6 +101,10 @@ def ranked_average_precision(ranked_labels: Any) -> np.ndarray:
     return (precision * labels).sum(axis=1) / positives
 
 
+def random_block_rows(length: int) -> int:
+    return max(1, min(RANDOM_CHUNK, RANDOM_MAX_CELLS // max(1, length)))
+
+
 def random_ranking_pr_aucs(
     y_true: Any, permutations: int = RANDOM_PERMUTATIONS, seed: int = 0
 ) -> np.ndarray:
@@ -106,9 +112,10 @@ def random_ranking_pr_aucs(
     if y.ndim != 1 or not y.any():
         raise ValueError("Ohne positive Beobachtung ist PR-AUC nicht definiert")
     rng = np.random.default_rng(seed)
+    rows = random_block_rows(y.size)
     values = []
-    for start in range(0, permutations, RANDOM_CHUNK):
-        size = min(RANDOM_CHUNK, permutations - start)
+    for start in range(0, permutations, rows):
+        size = min(rows, permutations - start)
         shuffled = rng.permuted(np.tile(y, (size, 1)), axis=1)
         values.append(ranked_average_precision(shuffled))
     return np.concatenate(values)
@@ -179,4 +186,22 @@ def evaluate_scores(y_true: Any, scores: Any) -> dict[str, Any]:
         "accuracyFlagged": flagged,
         "accuracyTruePositives": true_positives,
         "prCurve": pr_curve_points(y_true, scores),
+    }
+
+
+def seed_spread_summary(
+    seeds: Sequence[int], reported_seed: int, values: Sequence[float]
+) -> dict[str, Any]:
+    if not seeds or len(seeds) != len(values):
+        raise ValueError("Seeds und PR-AUC-Werte haben unterschiedliche Länge")
+    if reported_seed not in seeds:
+        raise ValueError(f"Der berichtete Seed {reported_seed} fehlt in {list(seeds)}")
+    numbers = [float(value) for value in values]
+    return {
+        "seeds": [int(seed) for seed in seeds],
+        "reportedSeed": int(reported_seed),
+        "prAuc": numbers,
+        "mean": float(np.mean(numbers)),
+        "min": float(np.min(numbers)),
+        "max": float(np.max(numbers)),
     }

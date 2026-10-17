@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = "==3.12.*"
 resolution-markers = [
     "sys_platform == 'win32'",
@@ -238,6 +238,7 @@ dependencies = [
     { name = "numpy" },
     { name = "pandas" },
     { name = "scikit-learn" },
+    { name = "threadpoolctl" },
 ]
 
 [package.optional-dependencies]
@@ -259,6 +260,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.2,<3" },
     { name = "pandas", specifier = ">=2.2,<4" },
     { name = "scikit-learn", specifier = ">=1.6,<2" },
+    { name = "threadpoolctl", specifier = ">=3.1,<4" },
     { name = "torch", marker = "extra == 'gnn'", specifier = ">=2.8,<2.14", index = "https://download.pytorch.org/whl/cpu" },
     { name = "torch-geometric", marker = "extra == 'gnn'", specifier = ">=2.7,<2.8" },
 ]

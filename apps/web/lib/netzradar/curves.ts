@@ -23,6 +23,7 @@ export interface ReferenceLevel {
 export const METHOD_CURVE_STYLES: Record<Method, CurveStyle> = {
   zscore: { color: CHART_COLORS.goldLine, dash: "" },
   iforest: { color: CHART_COLORS.goldDeep, dash: "8 3" },
+  hgb: { color: CHART_COLORS.ink, dash: "4 2" },
   gcn: { color: CHART_COLORS.sky, dash: "2 3", width: 2.5 },
   graphsage: { color: CHART_COLORS.navy, dash: "8 3 2 3" },
   mlp: { color: CHART_COLORS.slate, dash: "12 4" },

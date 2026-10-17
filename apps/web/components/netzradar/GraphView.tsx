@@ -12,12 +12,13 @@ import {
   nodeAttributes,
   nodeDisplay,
   nodeEmphasis,
+  seedAttributes,
   type Adjacency,
   type GraphEdgeAttributes,
   type GraphNodeAttributes,
 } from "@/lib/netzradar/graph";
 import { formatInteger } from "@/lib/netzradar/format";
-import type { NetEdge, NetNode } from "@/lib/netzradar/types";
+import type { NetEdge, NetNode, SeedSet } from "@/lib/netzradar/types";
 
 type Status = "loading" | "ready" | "unsupported" | "error";
 type Renderer = Sigma<GraphNodeAttributes, GraphEdgeAttributes>;
@@ -36,6 +37,7 @@ export interface GraphViewProps {
   nodes: readonly NetNode[];
   edges: readonly NetEdge[];
   adjacency: Adjacency;
+  seedSet: SeedSet;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   description: string;
@@ -72,11 +74,12 @@ function moveCamera(renderer: Renderer, state: Partial<CameraState>): void {
   else void camera.animate(state, { duration: CAMERA_DURATION });
 }
 
-export function GraphView({ nodes, edges, adjacency, selectedId, onSelect, description }: GraphViewProps) {
+export function GraphView({ nodes, edges, adjacency, seedSet, selectedId, onSelect, description }: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<Renderer | null>(null);
   const hoveredRef = useRef<string | null>(null);
   const selectedRef = useRef<string | null>(selectedId);
+  const seedSetRef = useRef<SeedSet>(seedSet);
   const onSelectRef = useRef(onSelect);
   const [status, setStatus] = useState<Status>("loading");
   const isClient = useIsClient();
@@ -103,7 +106,8 @@ export function GraphView({ nodes, edges, adjacency, selectedId, onSelect, descr
           multi: false,
           allowSelfLoops: false,
         });
-        for (const node of nodes) graph.addNode(node.id, nodeAttributes(node));
+        const byId = new Map(nodes.map((node) => [node.id, node]));
+        for (const node of nodes) graph.addNode(node.id, nodeAttributes(node, seedSetRef.current));
         for (const edge of edges) graph.addDirectedEdge(edge.source, edge.target, edgeAttributes());
 
         const BorderedNodeProgram = borderModule.createNodeBorderProgram<GraphNodeAttributes, GraphEdgeAttributes>({
@@ -130,7 +134,9 @@ export function GraphView({ nodes, edges, adjacency, selectedId, onSelect, descr
             labelRenderedSizeThreshold: Number.POSITIVE_INFINITY,
             nodeReducer: (id, data) => {
               const focus = focusOf(hoveredRef.current, selectedRef.current);
-              return nodeDisplay(data, nodeEmphasis(id, focus, adjacency), id === selectedRef.current);
+              const node = byId.get(id);
+              const base = node ? { ...data, ...seedAttributes(node, seedSetRef.current) } : data;
+              return nodeDisplay(base, nodeEmphasis(id, focus, adjacency), id === selectedRef.current);
             },
             edgeReducer: (edge) => {
               const focus = focusOf(hoveredRef.current, selectedRef.current);
@@ -183,6 +189,13 @@ export function GraphView({ nodes, edges, adjacency, selectedId, onSelect, descr
     moveCamera(renderer, { x: display.x, y: display.y, ratio });
   }, [selectedId, status]);
 
+  useEffect(() => {
+    if (seedSetRef.current === seedSet) return;
+    seedSetRef.current = seedSet;
+    const renderer = rendererRef.current;
+    if (renderer && status === "ready") renderer.refresh();
+  }, [seedSet, status]);
+
   function zoom(factor: number): void {
     const renderer = rendererRef.current;
     if (!renderer) return;
@@ -197,7 +210,7 @@ export function GraphView({ nodes, edges, adjacency, selectedId, onSelect, descr
   const unavailable = status === "unsupported" || status === "error";
 
   return (
-    <div className="relative" data-testid="graph-view" data-state={status}>
+    <div className="relative" data-testid="graph-view" data-state={status} data-seed-set={seedSet}>
       <div className="relative">
         <div
           ref={containerRef}

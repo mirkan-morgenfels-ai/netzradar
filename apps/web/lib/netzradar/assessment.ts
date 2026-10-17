@@ -1,14 +1,166 @@
-import { FEATURE_SET_TEXT, formatDecimal, formatInteger, joinList, METHOD_SHORT_TEXT } from "./format";
-import { beatsRandomRankings, bestAccuracyAtFlagged, compareScores, hitsAtRecall } from "./summary";
-import type { EvaluationInfo, Run } from "./types";
-
-export const NEIGHBOURHOOD_SHARE_SENTENCE =
-  "Gegenüber dem MLP gleicher Größe ohne Kanten kommt auf diesem Netz der größere Teil des Vorsprungs der Graph Neural Networks aus der Nachbarschaft.";
+import { FEATURE_SET_TEXT, formatDecimal, formatInteger, formatSeedList, joinList, METHOD_SHORT_TEXT } from "./format";
+import {
+  beatsRandomRankings,
+  bestAccuracyAtFlagged,
+  bestRun,
+  compareScores,
+  hasSpread,
+  hitsAtRecall,
+  isGraphMethod,
+  neuralTraining,
+  seedSpreadOf,
+  spreadSeeds,
+  type Comparison,
+} from "./summary";
+import type { EdgelessMethod, EvaluationInfo, NeuralTraining, Run } from "./types";
 
 export const FEW_HITS_RECALL = 0.1;
 
-export const NO_NEIGHBOURHOOD_LEAD_SENTENCE =
-  "Die Nachbarschaft bringt auf diesem Netz keinen belastbaren Vorsprung gegenüber dem MLP.";
+const EDGELESS_NAME: Record<EdgelessMethod, string> = {
+  hgb: "Gradient Boosting",
+  mlp: "MLP",
+};
+
+const EDGELESS_DETAIL: Record<EdgelessMethod, string> = {
+  hgb: "übliches starkes Verfahren für tabellarische Daten, eigene Suche über Merkmalssatz, Klassengewicht und Blattzahl",
+  mlp: "gleiche Größe und dieselben Kandidaten für Merkmalssatz und Klassengewicht wie die Graph Neural Networks",
+};
+
+export const MLP_CONTRAST_SENTENCE =
+  "Gegen das MLP gerechnet käme der größere Teil aus der Nachbarschaft; das MLP ist auf diesem Netz aber der schwächere Vergleich ohne Kanten.";
+
+export function methodChangeSentence(withMlp: boolean): string {
+  return `Gegenüber dem Gradient Boosting wechselt neben den Kanten auch das Verfahren, Entscheidungsbäume statt neuronaler Netze; ${
+    withMlp
+      ? "allein in den Kanten unterscheiden sich die Graph Neural Networks nur vom MLP."
+      : "ein neuronales Netz gleicher Größe ohne Kanten ist nicht gemessen."
+  }`;
+}
+
+function sameNetworkShape(training: NeuralTraining, reference: NeuralTraining): boolean {
+  return (
+    training.layers === reference.layers &&
+    training.hidden === reference.hidden &&
+    training.activation === reference.activation &&
+    training.dropout === reference.dropout &&
+    training.optimizer === reference.optimizer &&
+    training.learningRate === reference.learningRate &&
+    training.weightDecay === reference.weightDecay
+  );
+}
+
+export function neuralShapeSubject(runs: readonly Run[]): string {
+  const neural = runs.flatMap((run) => {
+    const training = neuralTraining(run);
+    return training ? [{ run, training }] : [];
+  });
+  const reference = neural.find(({ run }) => isGraphMethod(run.method)) ?? neural[0];
+  if (!reference) return "";
+  const shared = neural.length > 1 && neural.every(({ training }) => sameNetworkShape(training, reference.training));
+  return shared
+    ? `Hier haben die neuronalen Verfahren ${joinList(
+        neural.map(({ run }) => METHOD_SHORT_TEXT[run.method]),
+      )} dieselbe Form:`
+    : `${METHOD_SHORT_TEXT[reference.run.method]} hat`;
+}
+
+export function boostingReferenceSentence(hgb: Run, mlp: Run | null, margin: number): string {
+  const lead =
+    mlp !== null && compareScores(hgb.prAuc, mlp.prAuc, margin) === "higher"
+      ? `Auf diesem Netz liegt das Gradient Boosting deutlich über dem MLP (${formatDecimal(hgb.prAuc)} gegen ${formatDecimal(
+          mlp.prAuc,
+        )}); der Abstand der Graph Neural Networks zu ihm ist deshalb ein strengerer Vergleich als der zum MLP.`
+      : "Der Abstand der Graph Neural Networks zum Gradient Boosting ist ein Vergleich mit einem starken Verfahren ohne Kanten.";
+  return `${lead} Dieser Abstand mischt aber den Wechsel von Bäumen zu neuronalen Netzen mit der Wirkung der Nachbarschaft; ${
+    mlp !== null
+      ? "allein in den Kanten unterscheiden sich die Graph Neural Networks nur vom MLP."
+      : "ein neuronales Netz gleicher Größe ohne Kanten ist nicht gemessen."
+  }`;
+}
+
+interface Gap {
+  run: Run;
+  difference: number;
+  kind: Comparison;
+}
+
+function edgelessName(run: Run): string {
+  const method: EdgelessMethod = run.method === "hgb" ? "hgb" : "mlp";
+  return EDGELESS_NAME[method];
+}
+
+function edgelessDetail(run: Run): string {
+  const method: EdgelessMethod = run.method === "hgb" ? "hgb" : "mlp";
+  return EDGELESS_DETAIL[method];
+}
+
+function referenceText(reference: Run, count: number): string {
+  return count > 1
+    ? `dem stärksten gemessenen Verfahren ohne Kanten (${edgelessName(reference)})`
+    : `dem Verfahren ohne Kanten (${edgelessName(reference)})`;
+}
+
+export function neighbourhoodShareSentence(reference: Run, count: number): string {
+  return `Gegenüber ${referenceText(reference, count)} kommt auf diesem Netz der größere Teil des Vorsprungs der Graph Neural Networks aus der Nachbarschaft.`;
+}
+
+export function edgelessShareSentence(reference: Run, count: number, baseline: Run, graphRuns: readonly Run[]): string {
+  const totals = graphRuns.map(
+    (run, index) => `${index === 0 ? "" : "von "}${formatDecimal(run.prAuc - baseline.prAuc)} bei ${METHOD_SHORT_TEXT[run.method]}`,
+  );
+  return `Die Nachbarschaft bringt gegenüber ${referenceText(reference, count)} einen messbaren Vorsprung. Der größere Teil des Abstands zur besseren Baseline entsteht auf diesem Netz aber schon ohne Kanten: ${formatDecimal(
+    reference.prAuc - baseline.prAuc,
+  )} von ${joinList(totals)}.`;
+}
+
+export function undecidedShareSentence(reference: Run, count: number): string {
+  return `Die Nachbarschaft bringt gegenüber ${referenceText(reference, count)} einen messbaren Vorsprung; ob er größer ist als der Gewinn ohne Kanten, lässt sich mit dem Mindestabstand nicht entscheiden.`;
+}
+
+export function noNeighbourhoodLeadSentence(reference: Run, count: number): string {
+  return `Die Nachbarschaft bringt auf diesem Netz keinen belastbaren Vorsprung gegenüber ${referenceText(reference, count)}.`;
+}
+
+export function partialLeadSentence(reference: Run, count: number, ahead: readonly Run[]): string {
+  const names = joinList(ahead.map((run) => METHOD_SHORT_TEXT[run.method]));
+  return `Nur ${names} ${ahead.length === 1 ? "liegt" : "liegen"} um mehr als den Mindestabstand über ${referenceText(
+    reference,
+    count,
+  )}; ein Vorsprung der Nachbarschaft ist deshalb nicht für jedes Graph Neural Network belastbar.`;
+}
+
+function relation(difference: number, kind: Comparison, above: string, below: string, near: string): string {
+  const amount = formatDecimal(Math.abs(difference));
+  if (kind === "higher") return `um ${amount} ${above}`;
+  if (kind === "lower") return `um ${amount} ${below}`;
+  return `nur ${amount} ${near}`;
+}
+
+function edgelessIntro(edgeless: readonly Run[]): string {
+  const values = edgeless.map((run, index) => {
+    const name = `${index === 0 ? "Das" : "das"} ${edgelessName(run)} (${edgelessDetail(run)})`;
+    return index === 0 ? `${name} erreicht ${formatDecimal(run.prAuc)}` : `${name} ${formatDecimal(run.prAuc)}`;
+  });
+  const lead =
+    edgeless.length === 1
+      ? "Ein überwachtes Verfahren ohne Kanten trennt die Effekte: Es lernt aus denselben Labels wie die Graph Neural Networks und wählt am selben Validierungsteil, sieht aber keine Nachbarn."
+      : `${edgeless.length === 2 ? "Zwei" : formatInteger(edgeless.length)} überwachte Verfahren ohne Kanten trennen die Effekte: Sie lernen aus denselben Labels wie die Graph Neural Networks und wählen am selben Validierungsteil, sehen aber keine Nachbarn.`;
+  return `${lead} ${joinList(values)}.`;
+}
+
+function gapsTo(graphRuns: readonly Run[], reference: Run, margin: number): Gap[] {
+  return graphRuns.map((run) => ({
+    run,
+    difference: run.prAuc - reference.prAuc,
+    kind: compareScores(run.prAuc, reference.prAuc, margin),
+  }));
+}
+
+export function neighbourhoodDominates(graphRuns: readonly Run[], reference: Run, baseline: Run, margin: number): boolean {
+  const gain = Math.max(reference.prAuc - baseline.prAuc, 0);
+  const gaps = gapsTo(graphRuns, reference, margin);
+  return gaps.length > 0 && gaps.every(({ kind, difference }) => kind === "higher" && difference - gain > margin);
+}
 
 export function randomComparisonSentence(runs: readonly Run[], evaluation: EvaluationInfo): string {
   const quantile = formatDecimal(evaluation.randomPrAucQ95);
@@ -106,7 +258,7 @@ export function caveatTitle(leadMeasured: boolean): string {
 export function caveatConclusion(leadMeasured: boolean): string {
   return leadMeasured
     ? "Der gemessene Vorsprung der Graph Neural Networks ist deshalb zum Teil eine Eigenschaft dieses Generators und nicht auf reale Transaktionsdaten übertragbar. Wie stark er an der Homophilie hängt, zeigen erst Läufe mit absichtlich gestörter Nachbarschaft; sie fehlen noch."
-    : "Nicht jedes Graph Neural Network liegt hier um mehr als den Mindestabstand vor dem MLP und der besseren Baseline. Ein Vorsprung wäre auf diesem Netz zum Teil eine Eigenschaft des Generators und nicht auf reale Transaktionsdaten übertragbar.";
+    : "Nicht jedes Graph Neural Network liegt hier um mehr als den Mindestabstand vor den Verfahren ohne Kanten und der besseren Baseline. Ein Vorsprung wäre auf diesem Netz zum Teil eine Eigenschaft des Generators und nicht auf reale Transaktionsdaten übertragbar.";
 }
 
 export function homophilyLimitConclusion(leadMeasured: boolean): string {
@@ -115,64 +267,119 @@ export function homophilyLimitConclusion(leadMeasured: boolean): string {
     : "Ein Vorsprung der Graph Neural Networks wäre auf diesem Netz deshalb zum Teil eingebaut und nicht auf andere Daten übertragbar.";
 }
 
-export function decompositionSentences(mlp: Run, baseline: Run, graphRuns: readonly Run[], margin: number): string[] {
-  const supervision = mlp.prAuc - baseline.prAuc;
-  const supervisionKind = compareScores(mlp.prAuc, baseline.prAuc, margin);
+export function decompositionSentences(
+  edgeless: readonly Run[],
+  baseline: Run,
+  graphRuns: readonly Run[],
+  margin: number,
+): string[] {
+  const reference = bestRun(edgeless);
+  if (reference === null) return [];
+  const count = edgeless.length;
+  const name = edgelessName(reference);
+  const supervision = reference.prAuc - baseline.prAuc;
+  const supervisionKind = compareScores(reference.prAuc, baseline.prAuc, margin);
+  const baselineText = `${METHOD_SHORT_TEXT[baseline.method]}, ${formatDecimal(baseline.prAuc)}`;
   const featureNote =
-    mlp.featureSet === baseline.featureSet
+    reference.featureSet === baseline.featureSet
       ? ""
-      : ` und des Merkmalssatzes (das MLP nutzt ${FEATURE_SET_TEXT[mlp.featureSet]}, die bessere Baseline ${FEATURE_SET_TEXT[baseline.featureSet]})`;
-  const sentences = [
-    `Die Kontrolle trennt zwei Effekte. Das MLP ohne Kanten nutzt dieselben Labels und dasselbe Auswahlverfahren wie die Graph Neural Networks (dieselben Kandidaten für Merkmalssatz und Klassengewicht, Auswahl am Validierungsteil), sieht aber keine Nachbarn. Es erreicht ${formatDecimal(mlp.prAuc)}.`,
-  ];
+      : ` und des Merkmalssatzes (das ${name} nutzt ${FEATURE_SET_TEXT[reference.featureSet]}, die bessere Baseline ${FEATURE_SET_TEXT[baseline.featureSet]})`;
+  const sentences = [edgelessIntro(edgeless)];
   if (supervisionKind === "higher") {
     sentences.push(
-      `Das sind ${formatDecimal(supervision)} mehr als die bessere Baseline (${METHOD_SHORT_TEXT[baseline.method]}, ${formatDecimal(
-        baseline.prAuc,
-      )}). Dieser Abstand mischt die Wirkung der Labels mit dem Wechsel des Verfahrens${featureNote}.`,
+      `Das ${name} liegt um ${formatDecimal(supervision)} über der besseren Baseline (${baselineText}). Dieser Abstand mischt die Wirkung der Labels mit dem Wechsel des Verfahrens${featureNote}.`,
     );
   } else if (supervisionKind === "lower") {
     sentences.push(
-      `Das sind ${formatDecimal(-supervision)} weniger als die bessere Baseline (${METHOD_SHORT_TEXT[baseline.method]}, ${formatDecimal(
-        baseline.prAuc,
-      )}); die Labels allein helfen hier also nicht.`,
+      `Das ${name} liegt um ${formatDecimal(-supervision)} unter der besseren Baseline (${baselineText}); die Labels allein helfen hier also nicht.`,
     );
   } else {
     sentences.push(
-      `Das liegt nahe an der besseren Baseline (${METHOD_SHORT_TEXT[baseline.method]}, ${formatDecimal(
-        baseline.prAuc,
-      )}); die Labels allein bringen hier keinen belastbaren Vorsprung.`,
+      `Das ${name} liegt nahe an der besseren Baseline (${baselineText}); die Labels allein bringen hier keinen belastbaren Vorsprung.`,
     );
   }
-  const neighbourhood = graphRuns.map((run) => ({
-    run,
-    difference: run.prAuc - mlp.prAuc,
-    kind: compareScores(run.prAuc, mlp.prAuc, margin),
-  }));
+  const gaps = gapsTo(graphRuns, reference, margin);
+  if (gaps.length === 0) return sentences;
+  const mlp = edgeless.find((run) => run.method === "mlp" && run !== reference) ?? null;
+  const control = edgeless
+    .filter((run) => run !== reference)
+    .map(
+      (other) =>
+        ` Gegenüber dem ${edgelessName(other)}: ${gapsTo(graphRuns, other, margin)
+          .map(
+            ({ run, difference, kind }) =>
+              `${METHOD_SHORT_TEXT[run.method]} ${relation(difference, kind, "darüber", "darunter", "entfernt")}`,
+          )
+          .join(", ")}.`,
+    )
+    .join("");
+  const chosen = edgeless.some((run) => run.method === "hgb") ? "Epochen- bzw. Baumzahl" : "Epochenzahl";
   sentences.push(
-    `Mit Nachbarschaft, bei gleichem Auswahlverfahren: ${neighbourhood
-      .map(({ run, difference, kind }) => {
-        const amount = formatDecimal(Math.abs(difference));
-        const relation =
-          kind === "higher"
-            ? `um ${amount} über dem MLP`
-            : kind === "lower"
-              ? `um ${amount} unter dem MLP`
-              : `nur ${amount} vom MLP entfernt`;
-        return `${METHOD_SHORT_TEXT[run.method]} ${formatDecimal(run.prAuc)} (${relation})`;
-      })
-      .join(", ")}. Merkmalssatz, Gewicht und Epochenzahl wählt dabei jedes Verfahren für sich.`,
+    `Mit Nachbarschaft: ${gaps
+      .map(
+        ({ run, difference, kind }) =>
+          `${METHOD_SHORT_TEXT[run.method]} ${formatDecimal(run.prAuc)} (${relation(
+            difference,
+            kind,
+            `über dem ${name}`,
+            `unter dem ${name}`,
+            `vom ${name} entfernt`,
+          )})`,
+      )
+      .join(", ")}.${control} Merkmalssatz, Gewicht und ${chosen} wählt dabei jedes Verfahren für sich.`,
   );
-  const supervisionGain = Math.max(supervision, 0);
-  if (
-    neighbourhood.length > 0 &&
-    neighbourhood.every(({ difference, kind }) => kind === "higher" && difference - supervisionGain > margin)
-  ) {
-    sentences.push(NEIGHBOURHOOD_SHARE_SENTENCE);
-  } else if (neighbourhood.length > 0 && neighbourhood.every(({ kind }) => kind !== "higher")) {
-    sentences.push(NO_NEIGHBOURHOOD_LEAD_SENTENCE);
+  const gain = Math.max(supervision, 0);
+  const ahead = gaps.filter(({ kind }) => kind === "higher").map(({ run }) => run);
+  const methodChange = reference.method === "hgb" ? [methodChangeSentence(mlp !== null)] : [];
+  const contrast = mlp !== null && neighbourhoodDominates(graphRuns, mlp, baseline, margin) ? [MLP_CONTRAST_SENTENCE] : [];
+  if (ahead.length === gaps.length) {
+    if (gaps.every(({ difference }) => difference - gain > margin)) {
+      sentences.push(neighbourhoodShareSentence(reference, count), ...methodChange);
+    } else if (gaps.every(({ difference }) => gain - difference > margin)) {
+      sentences.push(edgelessShareSentence(reference, count, baseline, graphRuns), ...methodChange, ...contrast);
+    } else {
+      sentences.push(undecidedShareSentence(reference, count), ...methodChange, ...contrast);
+    }
+  } else if (ahead.length === 0) {
+    sentences.push(noNeighbourhoodLeadSentence(reference, count), ...methodChange);
+  } else {
+    sentences.push(partialLeadSentence(reference, count, ahead), ...methodChange);
   }
   return sentences;
+}
+
+export function spreadNote(runs: readonly Run[]): string {
+  const learned = runs.filter((run) => seedSpreadOf(run) !== null);
+  if (learned.length === 0) return "";
+  const seeds = spreadSeeds(runs);
+  const seedText = seeds === null ? "mehrere Seeds" : `die Seeds ${formatSeedList(seeds)}`;
+  const constant = learned.filter((run) => {
+    const spread = seedSpreadOf(run);
+    return spread !== null && !hasSpread(spread);
+  });
+  const boosting = constant.filter((run) => run.training?.kind === "boosting");
+  const other = constant.filter((run) => run.training?.kind !== "boosting");
+  const varying = learned.filter((run) => !constant.includes(run));
+  const names = (group: readonly Run[]) => joinList(group.map((run) => METHOD_SHORT_TEXT[run.method]));
+  const hasBoosting = learned.some((run) => run.training?.kind === "boosting");
+  const hasNeural = learned.some((run) => run.training?.kind === "neural");
+  const length = hasBoosting && hasNeural ? "Epochen- bzw. Baumzahl" : hasBoosting ? "Baumzahl" : "Epochenzahl";
+  const parts = [
+    `Spanne: kleinster bis größter Wert der PR-AUC über ${seedText} und ihr Mittel, nur bei den gelernten Verfahren. Mit jedem Seed wird nur das Endmodell neu trainiert; Daten, Merkmalssatz, Gewicht und ${length} bleiben gleich.`,
+  ];
+  if (boosting.length > 0) {
+    parts.push(
+      `Beim ${names(boosting)} ist die Spanne 0: Ohne Stichprobe von Zeilen oder Merkmalen und ohne Early Stopping zieht das Verfahren nichts zufällig, jeder Seed liefert dasselbe Modell.`,
+    );
+  }
+  if (other.length > 0) parts.push(`Bei ${names(other)} sind alle Werte gleich.`);
+  if (varying.length > 0) {
+    parts.push(
+      `Bei ${names(varying)} zeigt die Spanne, wie stark Startwerte der Gewichte und Dropout die Kennzahl verschieben.`,
+    );
+  }
+  parts.push("Ein Maß für die Unsicherheit durch die Daten ist die Spanne bei keinem Verfahren.");
+  return parts.join(" ");
 }
 
 export function accuracySentence(runs: readonly Run[], evaluation: EvaluationInfo): string {

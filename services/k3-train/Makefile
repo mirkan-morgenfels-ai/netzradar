@@ -1,4 +1,4 @@
-.PHONY: all data baseline gnn export verify test lint
+.PHONY: all data baseline gnn export runs verify test lint
 
 DATA_ARGS = $(if $(DATA_DIR),--data-dir "$(DATA_DIR)")
 DATASET_ARGS = $(if $(DATASET),--dataset $(DATASET))
@@ -26,6 +26,9 @@ gnn:
 
 export:
 	uv run k3-train export $(DATASET_ARGS) $(DATA_ARGS)
+
+runs:
+	uv run k3-train runs $(DATASET_ARGS) $(DATA_ARGS)
 
 verify:
 	$(GNN_RUN) k3-train verify

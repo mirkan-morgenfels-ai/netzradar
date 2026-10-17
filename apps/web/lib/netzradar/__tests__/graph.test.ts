@@ -10,12 +10,16 @@ import {
   edgeDisplay,
   edgeEmphasis,
   focusOf,
+  hopOf,
   neighborsOf,
   nodeAttributes,
   nodeDisplay,
   nodeEmphasis,
+  OUTSIDE_NODE_SIZE,
   premultiplied,
+  seedAttributes,
   seedNodes,
+  seedRankOf,
   summarizeComponents,
 } from "../graph";
 import type { NetEdge, NetNode } from "../types";
@@ -50,7 +54,9 @@ function node(id: string, overrides: Partial<NetNode> = {}): NetNode {
     scoreIforest: 0.5,
     scoreGnn: null,
     seedRank: null,
+    seedRankGnn: null,
     hop: 2,
+    hopGnn: null,
     inDegree: 0,
     outDegree: 0,
     ...overrides,
@@ -220,6 +226,17 @@ describe("start nodes and label counts", () => {
     expect(seedNodes(NODES).map((entry) => entry.id)).toEqual(["e", "a"]);
   });
 
+  it("orders the GNN start nodes by their own rank", () => {
+    const nodes = [
+      node("p", { hop: 0, seedRank: 1, hopGnn: 1 }),
+      node("q", { hop: null, hopGnn: 0, seedRankGnn: 2 }),
+      node("r", { hop: 1, hopGnn: 0, seedRankGnn: 1 }),
+    ];
+    expect(seedNodes(nodes, "gnn").map((entry) => entry.id)).toEqual(["r", "q"]);
+    expect(seedNodes(nodes, "iforest").map((entry) => entry.id)).toEqual(["p"]);
+    expect(seedNodes(nodes).map((entry) => entry.id)).toEqual(["p"]);
+  });
+
   it("counts labels by hand", () => {
     expect(countLabels(NODES)).toEqual({ illicit: 1, licit: 2, unknown: 2 });
   });
@@ -259,5 +276,37 @@ describe("summarizeComponents", () => {
       { source: "t", target: "s" },
     ]);
     expect(summary).toEqual({ count: 1, timeSteps: 2, onePerTimeStep: false });
+  });
+});
+
+describe("start sets in the graph", () => {
+  const both = node("both", { label: "illicit", hop: 0, seedRank: 3, hopGnn: 0, seedRankGnn: 1 });
+  const gnnOnly = node("gnn-only", { label: "illicit", hop: null, hopGnn: 1 });
+  const iforestOnly = node("iforest-only", { hop: 2, hopGnn: null });
+
+  it("reads rank and distance of the chosen start set", () => {
+    expect(seedRankOf(both, "iforest")).toBe(3);
+    expect(seedRankOf(both, "gnn")).toBe(1);
+    expect(hopOf(gnnOnly, "iforest")).toBeNull();
+    expect(hopOf(gnnOnly, "gnn")).toBe(1);
+  });
+
+  it("draws nodes outside the chosen start set smallest and start nodes on top", () => {
+    expect(OUTSIDE_NODE_SIZE).toBeLessThan(3.5);
+    expect(seedAttributes(gnnOnly, "iforest")).toEqual({ size: OUTSIDE_NODE_SIZE, zIndex: 1 });
+    expect(seedAttributes(gnnOnly, "gnn")).toEqual({ size: 4.5, zIndex: 1 });
+    expect(seedAttributes(iforestOnly, "gnn")).toEqual({ size: OUTSIDE_NODE_SIZE, zIndex: 1 });
+    expect(seedAttributes(iforestOnly, "iforest")).toEqual({ size: 3.5, zIndex: 1 });
+    expect(seedAttributes(both, "gnn")).toEqual({ size: 9, zIndex: 2 });
+  });
+
+  it("keeps colour and ring of the label in both start sets", () => {
+    const iforest = nodeAttributes(gnnOnly, "iforest");
+    const gnn = nodeAttributes(gnnOnly, "gnn");
+    expect(iforest.color).toBe(gnn.color);
+    expect(iforest.borderColor).toBe("#b8912f");
+    expect(iforest.size).toBe(OUTSIDE_NODE_SIZE);
+    expect(gnn.size).toBe(4.5);
+    expect(nodeAttributes(both)).toEqual(nodeAttributes(both, "iforest"));
   });
 });

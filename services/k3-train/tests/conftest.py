@@ -33,6 +33,11 @@ def elliptic_mini_dir() -> Path:
 
 
 @pytest.fixture(scope="session")
+def ibm_aml_mini_dir() -> Path:
+    return FIXTURES / "ibm_aml_mini"
+
+
+@pytest.fixture(scope="session")
 def small_dataset() -> Dataset:
     return load_synthetic(SMALL_CONFIG)
 

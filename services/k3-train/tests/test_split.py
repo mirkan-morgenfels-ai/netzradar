@@ -3,6 +3,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from k3_train.ibm_aml import load_ibm_aml
 from k3_train.load import Dataset, load_elliptic
 from k3_train.split import (
     ELLIPTIC_SPLIT,
@@ -12,6 +13,7 @@ from k3_train.split import (
     TemporalSplit,
     check_split,
     cross_split_edges,
+    ibm_aml_split,
     split_for,
     split_masks,
     steps_on_both_sides,
@@ -63,6 +65,28 @@ def test_elliptic_split(elliptic_mini_dir: Path) -> None:
     assert (split.validation.start, split.validation.end) == (30, 34)
     assert (split.test.start, split.test.end) == (35, 49)
     assert_temporal_split_holds(dataset, split)
+
+
+def test_ibm_aml_split_follows_sixty_twenty_twenty_by_days(ibm_aml_mini_dir: Path) -> None:
+    dataset = load_ibm_aml(ibm_aml_mini_dir)
+    split = split_for("ibm-aml", dataset.time_steps)
+    assert split == TemporalSplit(StepRange(1, 8), StepRange(7, 8), StepRange(9, 10))
+    assert_temporal_split_holds(dataset, split)
+
+
+def test_ibm_aml_split_for_other_lengths() -> None:
+    assert ibm_aml_split(16) == TemporalSplit(
+        StepRange(1, 13), StepRange(11, 13), StepRange(14, 16)
+    )
+    assert ibm_aml_split(97) == TemporalSplit(
+        StepRange(1, 78), StepRange(59, 78), StepRange(79, 97)
+    )
+    assert ibm_aml_split(4) == TemporalSplit(StepRange(1, 3), StepRange(3, 3), StepRange(4, 4))
+    assert ibm_aml_split(5) == TemporalSplit(StepRange(1, 4), StepRange(4, 4), StepRange(5, 5))
+    for steps in (4, 5, 10, 16, 97):
+        validate_split(ibm_aml_split(steps))
+    with pytest.raises(SplitError, match="mindestens 4 Tage"):
+        ibm_aml_split(3)
 
 
 def test_overlapping_split_is_rejected() -> None:

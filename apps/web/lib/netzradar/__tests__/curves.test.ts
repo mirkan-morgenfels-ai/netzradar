@@ -31,10 +31,11 @@ describe("curveSeries", () => {
     expect(series[0]?.points).toBe(RUNS[0]?.prCurve);
   });
 
-  it("draws all five methods with the styles of the contract", () => {
+  it("draws all six methods with the styles of the contract", () => {
     expect(curveSeries(ALL_RUNS).map((entry) => [entry.name, entry.color, entry.dash])).toEqual([
       ["Z-Scores", "#a8832a", ""],
       ["Isolation Forest", "#7d5f17", "8 3"],
+      ["Gradient Boosting", "#0f1b2d", "4 2"],
       ["GCN", "#3e6a9e", "2 3"],
       ["GraphSAGE", "#1d3a5f", "8 3 2 3"],
       ["MLP (ohne Kanten)", "#5b6474", "12 4"],
@@ -42,13 +43,34 @@ describe("curveSeries", () => {
   });
 
   it("draws the dotted GCN line thicker and leaves the other widths to the chart", () => {
-    expect(curveSeries(ALL_RUNS).map((entry) => entry.width)).toEqual([undefined, undefined, 2.5, undefined, undefined]);
+    expect(curveSeries(ALL_RUNS).map((entry) => entry.width)).toEqual([undefined, undefined, undefined, 2.5, undefined, undefined]);
   });
 
   it("keeps the label colours moss and wine out of the method colours", () => {
     const colours = Object.values(METHOD_CURVE_STYLES).map((style) => style.color);
     expect(colours).not.toContain(CHART_COLORS.moss);
     expect(colours).not.toContain(CHART_COLORS.wine);
+  });
+
+  it("draws the gradient boosting in ink with short dashes, apart from the GNN blues and the MLP slate", () => {
+    expect(METHOD_CURVE_STYLES.hgb).toEqual({ color: CHART_COLORS.ink, dash: "4 2" });
+    for (const method of ["gcn", "graphsage", "mlp"] as const) {
+      expect(METHOD_CURVE_STYLES[method].color).not.toBe(METHOD_CURVE_STYLES.hgb.color);
+      expect(METHOD_CURVE_STYLES[method].dash).not.toBe(METHOD_CURVE_STYLES.hgb.dash);
+    }
+  });
+
+  it("keeps every curve at 3:1 or more against the white chart surface: goldLine (L = 0,2472) gives 1,05 / 0,2972 = 3,53", () => {
+    const channel = (value: number) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+    const luminance = (hex: string) => {
+      const value = Number.parseInt(hex.slice(1), 16);
+      const [red, green, blue] = [(value >> 16) & 0xff, (value >> 8) & 0xff, value & 0xff].map((entry) => channel(entry / 255));
+      return 0.2126 * (red ?? 0) + 0.7152 * (green ?? 0) + 0.0722 * (blue ?? 0);
+    };
+    const contrast = (hex: string) => 1.05 / (luminance(hex) + 0.05);
+    expect(contrast(CHART_COLORS.goldLine)).toBeCloseTo(3.53, 2);
+    for (const style of Object.values(METHOD_CURVE_STYLES)) expect(contrast(style.color)).toBeGreaterThanOrEqual(3);
+    expect(contrast(METHOD_CURVE_STYLES.hgb.color)).toBeGreaterThan(17);
   });
 
   it("gives every method its own dash pattern", () => {

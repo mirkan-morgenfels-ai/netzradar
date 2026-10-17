@@ -17,6 +17,7 @@ def test_every_baseline_run_writes_a_complete_log(
     assert [path.name for path in paths] == [
         "2026-01-01_synthetic_zscore.json",
         "2026-01-01_synthetic_iforest.json",
+        "2026-01-01_synthetic_hgb.json",
     ]
     for path, run in zip(paths, small_output.runs, strict=True):
         log = read_json(path)
@@ -31,7 +32,7 @@ def test_every_baseline_run_writes_a_complete_log(
 
 
 def test_hyperparameters_are_recorded(small_output: BaselineOutput) -> None:
-    zscore, iforest = small_output.runs
+    zscore, iforest, hgb = small_output.runs
     assert zscore["hyperparameters"]["madScale"] == 1.4826
     assert zscore["hyperparameters"]["fitOn"] == "train"
     assert iforest["hyperparameters"]["nEstimators"] == 200
@@ -43,3 +44,6 @@ def test_hyperparameters_are_recorded(small_output: BaselineOutput) -> None:
         "g_betweenness",
         "g_eigenvector",
     ]
+    assert hgb["hyperparameters"]["randomState"] == 42
+    assert hgb["hyperparameters"]["earlyStopping"] is False
+    assert hgb["hyperparameters"]["score"] == "logOddsIllicit"

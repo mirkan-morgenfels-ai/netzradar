@@ -1,13 +1,15 @@
 "use client";
 
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cx } from "@portfolio/ui";
-import { formatDecimal, LABEL_TEXT } from "@/lib/netzradar/format";
-import type { NetNode } from "@/lib/netzradar/types";
+import { formatDecimal, LABEL_TEXT, seedSetScoreText } from "@/lib/netzradar/format";
+import { seedRankOf } from "@/lib/netzradar/graph";
+import type { NetNode, SeedSet } from "@/lib/netzradar/types";
 import { NodeSymbol } from "./NodeSymbol";
 
 export interface TopNodesTableProps {
   nodes: readonly NetNode[];
+  seedSet: SeedSet;
   selectedId: string | null;
   gnnLabel: string | null;
   onSelect: (id: string) => void;
@@ -23,12 +25,46 @@ const HEAD_CELL =
 const SCORE_HEAD_CELL = cx(HEAD_CELL, "text-right");
 const CELL = "px-2.5 first:pl-5 last:pr-5 sm:first:pl-6 sm:last:pr-6";
 
-export function TopNodesTable({ nodes, selectedId, gnnLabel, onSelect }: TopNodesTableProps) {
+function SortedMark() {
+  return (
+    <span aria-hidden="true" className="ml-1 text-gold-deep">
+      ↓
+    </span>
+  );
+}
+
+function ScoreHead({
+  sorted,
+  className,
+  testId,
+  children,
+}: {
+  sorted: boolean;
+  className: string;
+  testId?: string;
+  children: ReactNode;
+}) {
+  return (
+    <th
+      scope="col"
+      aria-sort={sorted ? "descending" : undefined}
+      className={cx(SCORE_HEAD_CELL, className, sorted ? "text-ink" : undefined)}
+      data-testid={testId}
+    >
+      {children}
+      {sorted ? <SortedMark /> : null}
+    </th>
+  );
+}
+
+export function TopNodesTable({ nodes, seedSet, selectedId, gnnLabel, onSelect }: TopNodesTableProps) {
   const [cursor, setCursor] = useState<Cursor | null>(null);
   const buttons = useRef(new Map<string, HTMLButtonElement>());
+  const byGnn = seedSet === "gnn" && gnnLabel !== null;
+  const scoreText = seedSetScoreText(byGnn ? "gnn" : "iforest", gnnLabel ?? "");
   const selectedInTable = selectedId !== null && nodes.some((node) => node.id === selectedId);
-  const tabStop =
-    cursor !== null && cursor.selection === selectedId ? cursor.id : selectedInTable ? selectedId : (nodes[0]?.id ?? null);
+  const cursorInTable = cursor !== null && cursor.selection === selectedId && nodes.some((node) => node.id === cursor.id);
+  const tabStop = cursorInTable ? cursor.id : selectedInTable ? selectedId : (nodes[0]?.id ?? null);
 
   function moveFocus(event: KeyboardEvent<HTMLButtonElement>, index: number) {
     let next = index;
@@ -45,17 +81,19 @@ export function TopNodesTable({ nodes, selectedId, gnnLabel, onSelect }: TopNode
   }
 
   return (
-    <div className="rounded-2xl border border-line bg-surface shadow-card">
+    <div className="rounded-2xl border border-line bg-surface shadow-card" data-testid="top-nodes" data-seed-set={seedSet}>
       <div className="px-5 pt-5 sm:px-6 sm:pt-6">
         <p className="eyebrow">Startknoten</p>
-        <h3 className="display mt-2 text-[1.625rem] leading-tight text-ink sm:text-[1.75rem]">
-          Die {nodes.length} Testknoten mit dem höchsten Isolation-Forest-Score
+        <h3 className="display mt-2 text-[1.625rem] leading-tight text-ink sm:text-[1.75rem]" data-testid="top-nodes-title">
+          Die {nodes.length} Testknoten mit dem höchsten {scoreText}
         </h3>
         <p id="top-nodes-note" className="mt-3 max-w-[70ch] text-xs leading-relaxed text-slate">
-          Die {nodes.length} Startknoten, sortiert nach dem Isolation-Forest-Score.
-          {gnnLabel === null
-            ? ""
-            : ` Die letzte Spalte zeigt zum Vergleich den GNN-Score (${gnnLabel}), eine Logit-Differenz ohne feste Obergrenze.`}{" "}
+          Die {nodes.length} Startknoten, sortiert nach dem {scoreText}
+          {byGnn
+            ? ", einer Logit-Differenz ohne feste Ober- und Untergrenze. Die Scores von Isolation Forest und robusten Z-Scores stehen zum Vergleich daneben."
+            : gnnLabel === null
+              ? "."
+              : `. Die letzte Spalte zeigt zum Vergleich den GNN-Score (${gnnLabel}), eine Logit-Differenz ohne feste Ober- und Untergrenze.`}{" "}
           Ein Klick auf eine Zeile oder Enter auf der ID wählt den Knoten im Graph aus.
         </p>
       </div>
@@ -64,14 +102,14 @@ export function TopNodesTable({ nodes, selectedId, gnnLabel, onSelect }: TopNode
         aria-labelledby="top-nodes-caption"
         aria-describedby="top-nodes-note"
         tabIndex={0}
-        className="mt-3 max-h-[30rem] overflow-auto rounded-b-2xl"
+        className="relative mt-3 max-h-[30rem] overflow-auto rounded-b-2xl"
       >
         <table
           className={cx("data-table", gnnLabel === null ? "min-w-[36rem]" : "min-w-[46rem]")}
           data-testid="top-nodes-table"
         >
           <caption id="top-nodes-caption" className="sr-only">
-            Startknoten des Netzwerk-Ausschnitts
+            Startknoten des Netzwerk-Ausschnitts nach {scoreText}
           </caption>
           <thead>
             <tr>
@@ -87,16 +125,16 @@ export function TopNodesTable({ nodes, selectedId, gnnLabel, onSelect }: TopNode
               <th scope="col" className={cx(HEAD_CELL, "text-right")}>
                 Zeitschritt
               </th>
-              <th scope="col" className={cx(SCORE_HEAD_CELL, "min-w-[8.25rem]")}>
+              <ScoreHead sorted={!byGnn} className="min-w-[8.25rem]">
                 Score Isolation Forest
-              </th>
-              <th scope="col" className={cx(SCORE_HEAD_CELL, "min-w-[7.75rem]")}>
+              </ScoreHead>
+              <ScoreHead sorted={false} className="min-w-[7.75rem]">
                 Score robuste <span className="whitespace-nowrap">Z-Scores</span>
-              </th>
+              </ScoreHead>
               {gnnLabel === null ? null : (
-                <th scope="col" className={cx(SCORE_HEAD_CELL, "min-w-[7.5rem]")} data-testid="top-nodes-gnn-header">
+                <ScoreHead sorted={byGnn} className="min-w-[7.5rem]" testId="top-nodes-gnn-header">
                   Score GNN <span className="whitespace-nowrap">({gnnLabel})</span>
-                </th>
+                </ScoreHead>
               )}
             </tr>
           </thead>
@@ -115,7 +153,9 @@ export function TopNodesTable({ nodes, selectedId, gnnLabel, onSelect }: TopNode
                     selected ? "bg-gold-soft/70 shadow-[inset_3px_0_0_var(--color-gold)] hover:bg-gold-soft/70" : undefined,
                   )}
                 >
-                  <td className={cx(CELL, "text-right text-slate")}>{node.seedRank}</td>
+                  <td className={cx(CELL, "text-right text-slate")} data-testid="top-node-rank">
+                    {seedRankOf(node, byGnn ? "gnn" : "iforest")}
+                  </td>
                   <td className={CELL}>
                     <button
                       type="button"

@@ -2,11 +2,22 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
+interface ExportedSpread {
+  seeds: number[];
+  reportedSeed: number;
+  prAuc: number[];
+  mean: number;
+  min: number;
+  max: number;
+}
+
 interface ExportedRun {
   method: string;
   featureSet: string;
+  seed: number;
   prAuc: number;
   date: string;
+  hyperparameters: { seedSpread?: ExportedSpread };
 }
 
 interface AxeViolation {
@@ -24,6 +35,9 @@ interface ExportedNode {
   id: string;
   label: "illicit" | "licit" | "unknown";
   seedRank: number | null;
+  seedRankGnn: number | null;
+  hop: number | null;
+  hopGnn: number | null;
   scoreGnn: number | null;
 }
 
@@ -39,18 +53,24 @@ const AXE_WIDTHS = [390, 768, 1280];
 const SHORT_NAME: Record<string, string> = {
   zscore: "Z-Scores",
   iforest: "Isolation Forest",
+  hgb: "Gradient Boosting",
   gcn: "GCN",
   graphsage: "GraphSAGE",
   mlp: "MLP (ohne Kanten)",
 };
 const NEIGHBOURHOOD_SHARE = "der größere Teil des Vorsprungs der Graph Neural Networks aus der Nachbarschaft";
+const EDGELESS_SHARE = "Der größere Teil des Abstands zur besseren Baseline entsteht auf diesem Netz aber schon ohne Kanten";
+const EDGELESS_METHODS = ["hgb", "mlp"];
 const INK = "rgb(15, 27, 45)";
 const NODES = JSON.parse(readFileSync(path.join(DATA_DIR, "nodes.json"), "utf8")) as {
   scoreGnnMethod: "gcn" | "graphsage" | null;
   nodes: ExportedNode[];
 };
 const FIRST_SEED = NODES.nodes.find((node) => node.seedRank === 1);
-const STEP_4_METHODS = ["gcn", "graphsage", "mlp"];
+const FIRST_GNN_SEED = NODES.nodes.find((node) => node.seedRankGnn === 1);
+const GNN_ONLY_SEED = NODES.nodes.find((node) => node.seedRankGnn !== null && node.hop === null);
+const LEARNED_METHODS = ["hgb", "gcn", "graphsage", "mlp"];
+const NEURAL_METHODS = ["gcn", "graphsage", "mlp"];
 const GNN_LABEL = { gcn: "GCN", graphsage: "GraphSAGE" } as const;
 const PENDING_TEXT = "noch nicht gemessen";
 const LABEL_PHRASE = { illicit: "Label illegal", licit: "Label legal", unknown: "ohne Label" } as const;
@@ -75,6 +95,17 @@ function germanList(items: string[]): string {
 
 function runOf(method: string): ExportedRun | undefined {
   return METRICS.runs.find((run) => run.method === method);
+}
+
+function bestOf(runs: readonly ExportedRun[]): ExportedRun | undefined {
+  return runs.reduce<ExportedRun | undefined>((best, run) => (!best || run.prAuc > best.prAuc ? run : best), undefined);
+}
+
+async function chooseSeedSet(page: Page, set: "iforest" | "gnn"): Promise<void> {
+  const button = page.getByTestId(`seed-set-${set}`);
+  await button.click();
+  await expect(button).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("top-nodes")).toHaveAttribute("data-seed-set", set);
 }
 
 function isAbove(value: number, reference: number): boolean {
@@ -120,6 +151,13 @@ async function completePageText(page: Page): Promise<string> {
   });
   await expect(closed).toHaveCount(0);
   const visible = await page.getByRole("main").innerText();
+  let gnnState = "";
+  if (NODES.scoreGnnMethod !== null) {
+    await chooseSeedSet(page, "gnn");
+    gnnState = await page.getByTestId("netzradar-explorer").innerText();
+    gnnState += `\n${(await page.getByTestId("graph-canvas").getAttribute("aria-label")) ?? ""}`;
+    await chooseSeedSet(page, "iforest");
+  }
   const attributes = await page.evaluate(() =>
     [...document.querySelectorAll("main [aria-label], main [alt], main [title], head title, head meta[content]")].map(
       (element) =>
@@ -134,7 +172,7 @@ async function completePageText(page: Page): Promise<string> {
           .join("\n"),
     ),
   );
-  return [visible, ...attributes].join("\n");
+  return [visible, gnnState, ...attributes].join("\n");
 }
 
 test.beforeEach(async ({ page }) => {
@@ -165,6 +203,7 @@ test("NetzRadar page renders headline, metrics, graph and node details without l
   for (const run of METRICS.runs) {
     await expect(page.getByTestId(`pr-auc-${run.method}`)).toHaveText(germanDecimal(run.prAuc));
   }
+  await expect(page.getByTestId("headline-figures")).toContainText(SHORT_NAME.hgb ?? "");
   await expect(page.getByTestId("metrics-row-random")).toContainText(
     germanDecimal(METRICS.evaluation.randomPrAucExpected),
   );
@@ -172,7 +211,7 @@ test("NetzRadar page renders headline, metrics, graph and node details without l
   await expect(page.getByTestId("assessment")).toContainText(
     `(Prävalenz im Test: ${germanPercent(METRICS.evaluation.prevalence, 2)})`,
   );
-  for (const method of STEP_4_METHODS) {
+  for (const method of LEARNED_METHODS) {
     const row = page.getByTestId(`metrics-row-${method}`);
     if (METRICS.runs.some((run) => run.method === method)) {
       await expect(row).not.toContainText(PENDING_TEXT);
@@ -180,7 +219,7 @@ test("NetzRadar page renders headline, metrics, graph and node details without l
       await expect(row).toContainText(PENDING_TEXT);
     }
   }
-  if (STEP_4_METHODS.every((method) => METRICS.runs.some((run) => run.method === method))) {
+  if (LEARNED_METHODS.every((method) => METRICS.runs.some((run) => run.method === method))) {
     await expect(page.getByText("noch nicht gemessen")).toHaveCount(0);
     await expect(page.getByText("noch nicht berechnet")).toHaveCount(0);
     await expect(page.getByTestId("homophily-caveat")).toBeVisible();
@@ -254,7 +293,6 @@ test("assessment sentences follow the differences in metrics.json", async ({ pag
   const iforest = runOf("iforest");
   const gcn = runOf("gcn");
   const graphsage = runOf("graphsage");
-  const mlp = runOf("mlp");
   const graphRuns = [gcn, graphsage].filter((run): run is ExportedRun => run !== undefined);
   const baselines = [zscore, iforest].filter((run): run is ExportedRun => run !== undefined);
   const baseline = baselines.reduce<ExportedRun | undefined>((best, run) => (!best || run.prAuc > best.prAuc ? run : best), undefined);
@@ -305,26 +343,50 @@ test("assessment sentences follow the differences in metrics.json", async ({ pag
     await expect(page.getByTestId("gcn-vs-graphsage")).toContainText(expected);
   }
 
-  if (mlp && baseline && graphRuns.length > 0) {
+  const edgeless = EDGELESS_METHODS.map(runOf).filter((run): run is ExportedRun => run !== undefined);
+  const reference = bestOf(edgeless);
+  if (reference && baseline && graphRuns.length > 0) {
     const decomposition = page.getByTestId("decomposition");
-    const supervision = mlp.prAuc - baseline.prAuc;
-    await expect(decomposition).toContainText(`Es erreicht ${germanDecimal(mlp.prAuc)}.`);
+    const supervision = reference.prAuc - baseline.prAuc;
+    for (const run of edgeless) await expect(decomposition).toContainText(germanDecimal(run.prAuc));
     if (Math.abs(supervision) > MARGIN) {
       await expect(decomposition).toContainText(germanDecimal(Math.abs(supervision)));
     }
+    const referenceName = reference.method === "hgb" ? "Gradient Boosting" : "MLP";
     for (const run of graphRuns) {
       await expect(decomposition).toContainText(`${SHORT_NAME[run.method]} ${germanDecimal(run.prAuc)} (`);
-      await expect(decomposition).toContainText(germanDecimal(Math.abs(run.prAuc - mlp.prAuc)));
+      const amount = germanDecimal(Math.abs(run.prAuc - reference.prAuc));
+      await expect(decomposition).toContainText(
+        isAbove(run.prAuc, reference.prAuc)
+          ? `um ${amount} über dem ${referenceName}`
+          : isAbove(reference.prAuc, run.prAuc)
+            ? `um ${amount} unter dem ${referenceName}`
+            : `nur ${amount} vom ${referenceName} entfernt`,
+      );
     }
-    const share = graphRuns.every(
-      (run) => isAbove(run.prAuc, mlp.prAuc) && run.prAuc - mlp.prAuc - Math.max(supervision, 0) > MARGIN,
-    );
+    const gain = Math.max(supervision, 0);
+    const ahead = graphRuns.every((run) => isAbove(run.prAuc, reference.prAuc));
+    const share = ahead && graphRuns.every((run) => run.prAuc - reference.prAuc - gain > MARGIN);
+    const edgelessShare = ahead && graphRuns.every((run) => gain - (run.prAuc - reference.prAuc) > MARGIN);
     if (share) {
       await expect(decomposition).toContainText(NEIGHBOURHOOD_SHARE);
     } else {
       await expect(decomposition).not.toContainText(NEIGHBOURHOOD_SHARE);
     }
-    const lead = graphRuns.every((run) => isAbove(run.prAuc, baseline.prAuc) && isAbove(run.prAuc, mlp.prAuc));
+    if (edgelessShare) {
+      await expect(decomposition).toContainText(EDGELESS_SHARE);
+      for (const run of graphRuns) {
+        await expect(decomposition).toContainText(`${germanDecimal(run.prAuc - baseline.prAuc)} bei ${SHORT_NAME[run.method]}`);
+      }
+    } else {
+      await expect(decomposition).not.toContainText(EDGELESS_SHARE);
+    }
+    if (reference.method === "hgb") {
+      await expect(decomposition).toContainText("Gegenüber dem Gradient Boosting wechselt neben den Kanten auch das Verfahren");
+    }
+    const lead = graphRuns.every(
+      (run) => isAbove(run.prAuc, baseline.prAuc) && edgeless.every((other) => isAbove(run.prAuc, other.prAuc)),
+    );
     await expect(page.locator("#homophily-caveat-title")).toHaveText(
       lead
         ? "Vorbehalt: Der Vorsprung ist zum Teil eingebaut"
@@ -333,8 +395,15 @@ test("assessment sentences follow the differences in metrics.json", async ({ pag
   }
 });
 
+async function axeViolations(page: Page): Promise<string[]> {
+  return page.evaluate(async (tags) => {
+    const result = await (window as unknown as AxeWindow).axe.run(document, { runOnly: { type: "tag", values: tags } });
+    return result.violations.map((violation) => `${violation.id}: ${violation.nodes.map((node) => node.target.join(" ")).join(" | ")}`);
+  }, AXE_TAGS);
+}
+
 for (const width of AXE_WIDTHS) {
-  test(`NetzRadar page has no axe violations at ${width} px`, async ({ page }) => {
+  test(`NetzRadar page has no axe violations at ${width} px with both start sets`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/projects/netzradar");
     await expect(page.getByTestId("graph-view")).toHaveAttribute("data-state", "ready", { timeout: 30_000 });
@@ -342,13 +411,14 @@ for (const width of AXE_WIDTHS) {
       document.getAnimations().every((animation) => !(animation instanceof CSSTransition) || animation.playState !== "running"),
     );
     await page.addScriptTag({ content: AXE_SOURCE });
-    const violations = await page.evaluate(async (tags) => {
-      const result = await (window as unknown as AxeWindow).axe.run(document, { runOnly: { type: "tag", values: tags } });
-      return result.violations.map(
-        (violation) => `${violation.id}: ${violation.nodes.map((node) => node.target.join(" ")).join(" | ")}`,
+    expect(await axeViolations(page)).toEqual([]);
+    if (NODES.scoreGnnMethod !== null) {
+      await chooseSeedSet(page, "gnn");
+      await page.waitForFunction(() =>
+        document.getAnimations().every((animation) => !(animation instanceof CSSTransition) || animation.playState !== "running"),
       );
-    }, AXE_TAGS);
-    expect(violations).toEqual([]);
+      expect(await axeViolations(page)).toEqual([]);
+    }
   });
 }
 
@@ -526,4 +596,139 @@ test.describe("without JavaScript", () => {
     await expect(page.getByTestId("graph-view")).not.toContainText("Graph wird geladen");
     await expect(page.getByTestId("metrics-table")).toBeVisible();
   });
+});
+
+test("metrics table shows the spread over the seeds and explains a spread of 0", async ({ page }) => {
+  await page.goto("/projects/netzradar");
+  const spreads = METRICS.runs.flatMap((run) => (run.hyperparameters.seedSpread ? [{ run, spread: run.hyperparameters.seedSpread }] : []));
+  expect(spreads.length).toBeGreaterThan(0);
+  const seedCount = spreads[0]?.spread.seeds.length ?? 0;
+  await expect(page.getByTestId("spread-header")).toHaveText(`Spanne über ${seedCount} Seeds`);
+  for (const { run, spread } of spreads) {
+    const cell = page.getByTestId(`spread-${run.method}`);
+    const range = page.getByTestId(`spread-range-${run.method}`);
+    expect(spread.prAuc[spread.seeds.indexOf(run.seed)]).toBe(run.prAuc);
+    if (spread.max > spread.min) {
+      await expect(range).toHaveText(`${germanDecimal(spread.min)}–${germanDecimal(spread.max)}`);
+      await expect(cell).toContainText(`Mittel ${germanDecimal(spread.mean)}`);
+    } else {
+      await expect(range).toHaveText(germanDecimal(spread.min));
+      await expect(cell).toContainText(`in allen ${spread.seeds.length} Seeds gleich`);
+    }
+  }
+  for (const run of METRICS.runs.filter((entry) => !entry.hyperparameters.seedSpread)) {
+    await expect(page.getByTestId(`spread-${run.method}`)).toBeVisible();
+    await expect(page.getByTestId(`spread-range-${run.method}`)).toHaveCount(0);
+  }
+  const hgb = runOf("hgb");
+  if (hgb?.hyperparameters.seedSpread) {
+    await expect(page.getByTestId("spread-hgb")).toContainText("kein Zufallsanteil");
+    await expect(page.getByTestId("spread-note")).toContainText(
+      "Beim Gradient Boosting ist die Spanne 0: Ohne Stichprobe von Zeilen oder Merkmalen und ohne Early Stopping zieht das Verfahren nichts zufällig",
+    );
+    await expect(page.getByTestId("seed-limit")).toContainText("beim Gradient Boosting ohne Zufallsanteil 0");
+  }
+  await expect(page.getByTestId("spread-note")).toContainText("Ein Maß für die Unsicherheit durch die Daten ist die Spanne bei keinem Verfahren.");
+  await expect(page.getByTestId("supervision-limit")).toContainText("Ein Random Forest und ein größerer Suchraum des Gradient Boosting");
+});
+
+test("method texts keep the gradient boosting apart from the neural methods", async ({ page }) => {
+  await page.goto("/projects/netzradar");
+  const openSection = async (id: string) => {
+    const section = page.locator(`#${id}`);
+    await section.evaluate((element) => {
+      (element as HTMLDetailsElement).open = true;
+    });
+    return section.innerText();
+  };
+  const neural = METRICS.runs.filter((run) => NEURAL_METHODS.includes(run.method));
+  if (neural.length > 1) {
+    const text = await openSection("methodik-message-passing");
+    const start = text.indexOf("Hier haben die neuronalen Verfahren");
+    const end = text.indexOf("Optimierungsschritt.", start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const sentence = text.slice(start, end);
+    expect(sentence).toContain(
+      `Hier haben die neuronalen Verfahren ${germanList(neural.map((run) => SHORT_NAME[run.method] ?? run.method))} dieselbe Form:`,
+    );
+    expect(sentence).not.toContain("Gradient Boosting");
+    expect(text).not.toContain("gelernten Verfahren");
+  }
+  if (runOf("hgb")) {
+    const text = await openSection("methodik-hgb");
+    expect(text).toContain("mit dem Startwert F0, den Log-Odds des Anteils der Trainingszeilen mit Label illegal");
+    expect(text).toContain(
+      "Dieser Abstand mischt aber den Wechsel von Bäumen zu neuronalen Netzen mit der Wirkung der Nachbarschaft",
+    );
+    expect(text).not.toContain("zeigt deshalb strenger");
+  }
+  const plans = page.getByTestId("dataset-plans");
+  await expect(plans).toContainText(
+    "Ausgewertet ist bisher keiner von beiden. Die öffentliche Demo auf dieser Seite bleibt das synthetische Netz",
+  );
+  await expect(plans).not.toContainText("Elliptic wird nur lokal");
+});
+
+test("excerpt text counts both start sets from nodes.json", async ({ page }) => {
+  test.skip(NODES.scoreGnnMethod === null, "nodes.json has no GNN start set");
+  await page.goto("/projects/netzradar");
+  const count = (value: number) => value.toLocaleString("de-DE");
+  const iforest = NODES.nodes.filter((node) => node.hop !== null).length;
+  const gnn = NODES.nodes.filter((node) => node.hopGnn !== null).length;
+  const both = NODES.nodes.filter((node) => node.hop !== null && node.hopGnn !== null).length;
+  const text = page.getByTestId("excerpt-text");
+  await expect(text).toContainText(`Der Ausschnitt ist die Vereinigung beider Nachbarschaften: ${count(NODES.nodes.length)} Knoten`);
+  await expect(text).toContainText(
+    `${count(iforest)} Knoten liegen in der Nachbarschaft der Startknoten nach Isolation-Forest-Score, ${count(gnn)} in der nach GNN-Score, ${count(both)} in beiden`,
+  );
+  await expect(page.getByRole("main")).not.toContainText("Der Ausschnitt selbst ist nach dem Isolation-Forest-Score gewählt");
+});
+
+test("start set switch changes table and graph by mouse and keyboard", async ({ page }) => {
+  test.skip(NODES.scoreGnnMethod === null, "nodes.json has no GNN start set");
+  await page.goto("/projects/netzradar");
+  await expect(page.getByTestId("graph-view")).toHaveAttribute("data-state", "ready", { timeout: 30_000 });
+  const label = GNN_LABEL[NODES.scoreGnnMethod ?? "gcn"];
+  const group = page.getByRole("group", { name: "Startknoten nach Score" });
+  const iforestButton = group.getByRole("button", { name: "Isolation Forest" });
+  const gnnButton = group.getByRole("button", { name: `GNN (${label})` });
+  await expect(iforestButton).toHaveAttribute("aria-pressed", "true");
+  await expect(gnnButton).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByTestId("top-nodes-title")).toHaveText("Die 50 Testknoten mit dem höchsten Isolation-Forest-Score");
+  await expect(page.getByTestId("top-node-row").first()).toHaveAttribute("data-node-id", FIRST_SEED?.id ?? "");
+  await expect(page.getByTestId("graph-view")).toHaveAttribute("data-seed-set", "iforest");
+
+  await iforestButton.focus();
+  await page.keyboard.press("Tab");
+  await expect(gnnButton).toBeFocused();
+  await page.keyboard.press("Space");
+  await expect(gnnButton).toHaveAttribute("aria-pressed", "true");
+  await expect(iforestButton).toHaveAttribute("aria-pressed", "false");
+  await expect(gnnButton).toBeFocused();
+  await expect(page.getByTestId("graph-view")).toHaveAttribute("data-seed-set", "gnn");
+  await expect(page.getByTestId("top-nodes-title")).toHaveText(`Die 50 Testknoten mit dem höchsten GNN-Score (${label})`);
+  await expect(page.getByTestId("top-nodes-gnn-header")).toHaveAttribute("aria-sort", "descending");
+  await expect(page.getByTestId("top-node-row").first()).toHaveAttribute("data-node-id", FIRST_GNN_SEED?.id ?? "");
+  await expect(page.getByTestId("top-node-rank")).toHaveText(Array.from({ length: 50 }, (_, index) => String(index + 1)));
+  await expect(page.getByTestId("seed-set-note")).toContainText("0 ist dabei keine kalibrierte Schwelle");
+  await expect(page.getByTestId("graph-canvas")).toHaveAttribute("aria-label", new RegExp(`Startknoten nach GNN-Score \\(${label}\\)`));
+  await expect(page.getByTestId("top-nodes-table").locator("button[tabindex='0']")).toHaveCount(1);
+
+  if (GNN_ONLY_SEED) {
+    await page.locator(`[data-testid="top-node-row"][data-node-id="${GNN_ONLY_SEED.id}"]`).click();
+    const seeds = page.getByTestId("node-detail-seeds");
+    const value = (term: string) => seeds.locator("div", { has: page.locator("dt", { hasText: term }) }).locator("dd");
+    await expect(page.getByTestId("node-detail-id")).toHaveText(GNN_ONLY_SEED.id);
+    await expect(value("Rang nach Isolation-Forest-Score")).toHaveText("kein Startknoten");
+    await expect(value(`Rang nach GNN-Score (${label})`)).toHaveText(`${GNN_ONLY_SEED.seedRankGnn} von 50`);
+    await expect(seeds.locator("dd").nth(1)).toHaveText("mehr als 2 Kanten");
+    await expect(seeds.locator("dd").nth(3)).toHaveText("0 Kanten");
+  }
+
+  await iforestButton.focus();
+  await page.keyboard.press("Enter");
+  await expect(iforestButton).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("top-node-row").first()).toHaveAttribute("data-node-id", FIRST_SEED?.id ?? "");
+  await expect(page.getByTestId("seed-set-note")).not.toContainText("kalibrierte Schwelle");
 });

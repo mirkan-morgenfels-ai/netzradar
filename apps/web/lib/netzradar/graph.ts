@@ -1,5 +1,5 @@
 import { CHART_COLORS } from "@portfolio/charts/theme";
-import type { Hop, LabelCounts, NetEdge, NetNode, NodeLabel } from "./types";
+import type { Hop, LabelCounts, NetEdge, NetNode, NodeLabel, SeedSet } from "./types";
 
 export interface NodeStyle {
   fill: string;
@@ -14,6 +14,7 @@ export const NODE_STYLES: Record<NodeLabel, NodeStyle> = {
 };
 
 export const NODE_SIZE_BY_HOP: Record<Hop, number> = { 0: 9, 1: 4.5, 2: 3.5 };
+export const OUTSIDE_NODE_SIZE = 2.5;
 export const FOCUS_SIZE_FACTOR = 1.3;
 
 export function premultiplied(hex: string, alpha: number): string {
@@ -59,17 +60,32 @@ export interface NodeDisplay extends GraphNodeAttributes {
 
 export type Adjacency = ReadonlyMap<string, ReadonlySet<string>>;
 
-export function nodeAttributes(node: NetNode): GraphNodeAttributes {
+export function seedRankOf(node: NetNode, set: SeedSet): number | null {
+  return set === "gnn" ? node.seedRankGnn : node.seedRank;
+}
+
+export function hopOf(node: NetNode, set: SeedSet): Hop | null {
+  return set === "gnn" ? node.hopGnn : node.hop;
+}
+
+export function seedAttributes(node: NetNode, set: SeedSet): Pick<GraphNodeAttributes, "size" | "zIndex"> {
+  const hop = hopOf(node, set);
+  return {
+    size: hop === null ? OUTSIDE_NODE_SIZE : NODE_SIZE_BY_HOP[hop],
+    zIndex: seedRankOf(node, set) === null ? 1 : 2,
+  };
+}
+
+export function nodeAttributes(node: NetNode, set: SeedSet = "iforest"): GraphNodeAttributes {
   const style = NODE_STYLES[node.label];
   return {
     x: node.x,
     y: node.y,
-    size: NODE_SIZE_BY_HOP[node.hop],
     color: style.fill,
     borderColor: style.ring,
     borderSize: style.ringSize,
     label: node.id,
-    zIndex: node.seedRank === null ? 1 : 2,
+    ...seedAttributes(node, set),
   };
 }
 
@@ -131,10 +147,10 @@ export function edgeDisplay(emphasis: EdgeEmphasis): GraphEdgeAttributes {
   return { ...EDGE_STYLES.normal, zIndex: 1 };
 }
 
-export function seedNodes(nodes: readonly NetNode[]): NetNode[] {
+export function seedNodes(nodes: readonly NetNode[], set: SeedSet = "iforest"): NetNode[] {
   return nodes
-    .filter((node) => node.seedRank !== null)
-    .sort((a, b) => (a.seedRank ?? 0) - (b.seedRank ?? 0));
+    .filter((node) => seedRankOf(node, set) !== null)
+    .sort((a, b) => (seedRankOf(a, set) ?? 0) - (seedRankOf(b, set) ?? 0));
 }
 
 export function countLabels(nodes: readonly NetNode[]): LabelCounts {
