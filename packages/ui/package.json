@@ -21,6 +21,6 @@
     "eslint": "^9.39.5",
     "react": "^19.2.8",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.69.0"
+    "typescript-eslint": "^8.71.2"
   }
 }
