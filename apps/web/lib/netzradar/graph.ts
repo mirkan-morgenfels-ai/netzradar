@@ -17,18 +17,36 @@ export const NODE_SIZE_BY_HOP: Record<Hop, number> = { 0: 9, 1: 4.5, 2: 3.5 };
 export const OUTSIDE_NODE_SIZE = 2.5;
 export const FOCUS_SIZE_FACTOR = 1.3;
 
-export function premultiplied(hex: string, alpha: number): string {
+export function withAlpha(hex: string, alpha: number): string {
   const value = Number.parseInt(hex.slice(1), 16);
-  const channel = (shift: number) => Math.round(((value >> shift) & 0xff) * alpha);
+  const channel = (shift: number) => (value >> shift) & 0xff;
   return `rgba(${channel(16)}, ${channel(8)}, ${channel(0)}, ${alpha})`;
 }
 
 export const EDGE_ALPHA = 0.5;
 
-export const EDGE_STYLES = {
-  normal: { color: premultiplied(CHART_COLORS.slate, EDGE_ALPHA), size: 1 },
-  active: { color: CHART_COLORS.navy, size: 2.5 },
-  dimmed: { color: "#e9ebee", size: 1 },
+export const EDGE_SIZE_PER_THICKNESS = 2;
+
+export function edgeSize(thickness: number): number {
+  return thickness * EDGE_SIZE_PER_THICKNESS;
+}
+
+export interface EdgeStyle {
+  color: string;
+  size: number;
+}
+
+export const EDGE_STYLES: Record<EdgeEmphasis, EdgeStyle> = {
+  normal: { color: withAlpha(CHART_COLORS.slate, EDGE_ALPHA), size: edgeSize(1) },
+  active: { color: CHART_COLORS.navy, size: edgeSize(2.5) },
+  dimmed: { color: "#e9ebee", size: edgeSize(1) },
+};
+
+export const MIN_EDGE_SIZE = edgeSize(1.7);
+
+export const ARROW_HEAD = {
+  lengthRatio: 5 / EDGE_SIZE_PER_THICKNESS,
+  widthRatio: 4 / EDGE_SIZE_PER_THICKNESS,
 } as const;
 
 export const DIMMED_NODE_COLOR = "#dfe2e6";
@@ -44,18 +62,20 @@ export interface GraphNodeAttributes {
   zIndex: number;
 }
 
-export interface GraphEdgeAttributes {
-  color: string;
-  size: number;
+export interface GraphEdgeAttributes extends EdgeStyle {
   zIndex: number;
 }
 
 export type NodeEmphasis = "focus" | "neighbor" | "dimmed" | "normal";
 export type EdgeEmphasis = "active" | "dimmed" | "normal";
+export type NodeDepth = "nodes" | "topNodes";
+export type Visibility = "visible" | "hidden";
 
 export interface NodeDisplay extends GraphNodeAttributes {
-  forceLabel: boolean;
-  highlighted: boolean;
+  depth: NodeDepth;
+  labelDepth: NodeDepth;
+  labelVisibility: Visibility;
+  backdropVisibility: Visibility;
 }
 
 export type Adjacency = ReadonlyMap<string, ReadonlySet<string>>;
@@ -124,7 +144,7 @@ export function edgeEmphasis(source: string, target: string, focusId: string | n
 }
 
 export function nodeDisplay(attributes: GraphNodeAttributes, emphasis: NodeEmphasis, selected: boolean): NodeDisplay {
-  const display: NodeDisplay = { ...attributes, forceLabel: false, highlighted: false };
+  const display: NodeDisplay = { ...attributes, depth: "nodes", labelDepth: "nodes", labelVisibility: "hidden", backdropVisibility: "hidden" };
   if (emphasis === "dimmed" && !selected) {
     return { ...display, color: DIMMED_NODE_COLOR, borderColor: DIMMED_NODE_COLOR, zIndex: 0 };
   }
@@ -134,11 +154,17 @@ export function nodeDisplay(attributes: GraphNodeAttributes, emphasis: NodeEmpha
       ...display,
       size: attributes.size * FOCUS_SIZE_FACTOR,
       zIndex: 4,
-      forceLabel: true,
-      highlighted: true,
+      depth: "topNodes",
+      labelDepth: "topNodes",
+      labelVisibility: "visible",
+      backdropVisibility: "visible",
     };
   }
   return display;
+}
+
+export function orderedZIndex(level: number, index: number, count: number): number {
+  return level * count + index;
 }
 
 export function edgeDisplay(emphasis: EdgeEmphasis): GraphEdgeAttributes {

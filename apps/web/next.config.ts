@@ -30,6 +30,7 @@ const SECURITY_HEADERS = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  agentRules: false,
   transpilePackages: ["@portfolio/charts", "@portfolio/legal", "@portfolio/ui"],
   async headers() {
     return [{ source: "/(.*)", headers: SECURITY_HEADERS }];

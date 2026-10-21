@@ -20,13 +20,15 @@ const PREVIEW_IMAGE_SOURCES = [
   "../../components/site/netMotif.ts",
   "../og-glyphs.ts",
 ];
-const PREVIEW_IMAGE_FINGERPRINT = "da3769f8b2ae6e43";
+const PREVIEW_IMAGE_ASSETS = ["../../assets/noto-sans-v27-latin-regular.ttf"];
+const PREVIEW_IMAGE_FINGERPRINT = "a0655a214db84438";
 
 function previewImageFingerprint(): string {
   const hash = createHash("sha256");
   for (const source of PREVIEW_IMAGE_SOURCES) {
     hash.update(readFileSync(fileURLToPath(new URL(source, import.meta.url)), "utf8").replace(/\r\n/g, "\n"));
   }
+  for (const asset of PREVIEW_IMAGE_ASSETS) hash.update(readFileSync(fileURLToPath(new URL(asset, import.meta.url))));
   hash.update(JSON.stringify([SITE_NAME, OG_SUBTITLE, OG_IMAGE_SIZE, CHART_COLORS]));
   return hash.digest("hex").slice(0, 16);
 }
@@ -46,7 +48,7 @@ describe("pageMetadata", () => {
         type: "website",
         images: [
           {
-            url: "/opengraph-image?v=4",
+            url: "/opengraph-image?v=5",
             type: "image/png",
             width: 1200,
             height: 630,
@@ -59,7 +61,7 @@ describe("pageMetadata", () => {
 
   it("ties the preview image URL to its inputs: bump OG_IMAGE_VERSION and the fingerprint together", () => {
     expect({ version: OG_IMAGE_VERSION, fingerprint: previewImageFingerprint() }).toEqual({
-      version: 4,
+      version: 5,
       fingerprint: PREVIEW_IMAGE_FINGERPRINT,
     });
     expect(OG_IMAGE_PATH).toBe(`/opengraph-image?v=${OG_IMAGE_VERSION}`);
