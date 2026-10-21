@@ -133,6 +133,8 @@ Laufzeit eines Elliptic-Volllaufs: [Platzhalter: noch nicht gemessen].
 
 Entscheidung vom 16.10.2026 (vom Autor an Claude delegiert): Die öffentliche Demo bleibt das synthetische Netz. Es ist in der CI ohne Download, ohne Konto und ohne Lizenzfragen reproduzierbar, und `verify` kann jede veröffentlichte Zahl nachrechnen. IBM-AML wird nur lokal ausgewertet, mit Transaktionen als Knoten (Option a in `CLAUDE.md`, „Offene Entscheidungen“). Der Lader steht in `services/k3-train/src/k3_train/ibm_aml.py` und ist bisher nur an einer erfundenen Fixture getestet; ein Lauf auf den echten Daten steht aus.
 
+Anleitung für den ersten Lauf auf den echten Daten (Konto, Download, Ablage, Befehle, erwartete Laufzeit- und Speicherrisiken, was festzuhalten ist und was veröffentlicht werden darf): [`ibm-aml-lokal.md`](ibm-aml-lokal.md).
+
 ### Quelle und Kennzahlen
 
 - Altman, E., Blanuša, J., von Niederhäusern, L., Egressy, B., Anghel, A., Atasu, K. (2023). Realistic Synthetic Financial Transactions for Anti-Money Laundering Models. arXiv:2306.16424. Die Daten stammen aus einem agentenbasierten Generator (AMLworld), der an echten Transaktionen kalibriert ist; sie enthalten keine echten Konten.

@@ -16,26 +16,24 @@
     "@portfolio/charts": "workspace:*",
     "@portfolio/legal": "workspace:*",
     "@portfolio/ui": "workspace:*",
-    "@sigma/node-border": "^3.0.0",
     "graphology": "^0.26.0",
-    "next": "^15.5.25",
+    "next": "^16.4.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "sigma": "^3.0.3"
+    "sigma": "^4.0.1"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3.3.7",
     "@playwright/test": "^1.64.0",
     "@tailwindcss/postcss": "^4.3.3",
-    "@types/node": "^22.20.1",
+    "@types/node": "^26.6.5",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "axe-core": "^4.14.0",
-    "eslint": "^9.39.5",
-    "eslint-config-next": "^15.5.25",
+    "eslint": "^10.12.0",
+    "eslint-config-next": "^16.4.0",
     "graphology-types": "^0.24.8",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.4"
   }
 }

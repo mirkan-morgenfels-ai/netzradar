@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { ImageResponse } from "next/og";
 import { BrandMark } from "@/components/BrandMark";
 import { NET_EDGES, NET_FAN_IN, NET_FLAGGED, NET_NODES, NET_RINGS, NET_SWEEP, netPoint, sweepWedge } from "@/components/site/netMotif";
@@ -8,6 +10,8 @@ import { PROJECTS } from "@/lib/site";
 export const alt = OG_IMAGE_ALT;
 export const size = OG_IMAGE_SIZE;
 export const contentType = "image/png";
+
+const sansFont = await readFile(join(process.cwd(), "assets/noto-sans-v27-latin-regular.ttf"));
 
 const NAVY = "#0b1626";
 const IVORY = "#f7f3ea";
@@ -178,6 +182,6 @@ export default function OpengraphImage() {
         </div>
       </div>
     ),
-    size,
+    { ...size, fonts: [{ name: "Noto Sans", data: sansFont, weight: 400, style: "normal" }] },
   );
 }

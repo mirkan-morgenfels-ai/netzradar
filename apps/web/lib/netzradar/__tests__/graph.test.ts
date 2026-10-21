@@ -1,14 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
+  ARROW_HEAD,
   DIMMED_NODE_COLOR,
   EDGE_ALPHA,
+  EDGE_SIZE_PER_THICKNESS,
   EDGE_STYLES,
+  MIN_EDGE_SIZE,
   NODE_STYLES,
   buildAdjacency,
   countLabels,
   edgeAttributes,
   edgeDisplay,
   edgeEmphasis,
+  edgeSize,
   focusOf,
   hopOf,
   neighborsOf,
@@ -16,11 +20,12 @@ import {
   nodeDisplay,
   nodeEmphasis,
   OUTSIDE_NODE_SIZE,
-  premultiplied,
+  orderedZIndex,
   seedAttributes,
   seedNodes,
   seedRankOf,
   summarizeComponents,
+  withAlpha,
 } from "../graph";
 import type { NetEdge, NetNode } from "../types";
 
@@ -165,8 +170,10 @@ describe("node and edge attributes", () => {
     expect(display.x).toBe(-0.5);
     expect(display.y).toBe(0.25);
     expect(display.label).toBe("a");
-    expect(display.forceLabel).toBe(true);
-    expect(display.highlighted).toBe(true);
+    expect(display.labelVisibility).toBe("visible");
+    expect(display.backdropVisibility).toBe("visible");
+    expect(display.depth).toBe("topNodes");
+    expect(display.labelDepth).toBe("topNodes");
     expect(display.zIndex).toBe(4);
   });
 
@@ -174,7 +181,28 @@ describe("node and edge attributes", () => {
     const display = nodeDisplay(nodeAttributes(NODE_B), "neighbor", false);
     expect(display.color).toBe("#2f6b3a");
     expect(display.zIndex).toBe(3);
-    expect(display.highlighted).toBe(false);
+    expect(display.depth).toBe("nodes");
+    expect(display.labelVisibility).toBe("hidden");
+    expect(display.backdropVisibility).toBe("hidden");
+  });
+
+  it("shows no label and no backdrop without a focus", () => {
+    const display = nodeDisplay(nodeAttributes(NODE_A), "normal", false);
+    expect(display).toEqual({
+      ...nodeAttributes(NODE_A),
+      depth: "nodes",
+      labelDepth: "nodes",
+      labelVisibility: "hidden",
+      backdropVisibility: "hidden",
+    });
+  });
+
+  it("orders items by level first and keeps the data order within a level", () => {
+    expect(orderedZIndex(0, 0, 5)).toBe(0);
+    expect(orderedZIndex(0, 4, 5)).toBe(4);
+    expect(orderedZIndex(1, 0, 5)).toBe(5);
+    expect(orderedZIndex(4, 2, 5)).toBe(22);
+    expect(orderedZIndex(3, 4, 5)).toBeLessThan(orderedZIndex(4, 0, 5));
   });
 
   it("greys out dimmed nodes unless they are selected", () => {
@@ -184,21 +212,43 @@ describe("node and edge attributes", () => {
     expect(dimmed.zIndex).toBe(0);
     const selected = nodeDisplay(nodeAttributes(NODE_A), "dimmed", true);
     expect(selected.color).toBe("#7a1f2b");
-    expect(selected.highlighted).toBe(true);
+    expect(selected.labelVisibility).toBe("visible");
+    expect(selected.backdropVisibility).toBe("visible");
+    expect(selected.depth).toBe("topNodes");
   });
 
   it("draws active edges in navy and thicker, normal edges in slate with alpha", () => {
-    expect(edgeDisplay("active")).toEqual({ color: "#1d3a5f", size: 2.5, zIndex: 2 });
-    expect(edgeDisplay("dimmed")).toEqual({ color: "#e9ebee", size: 1, zIndex: 0 });
-    expect(edgeDisplay("normal")).toEqual({ color: "rgba(46, 50, 58, 0.5)", size: 1, zIndex: 1 });
-    expect(edgeAttributes()).toEqual({ color: "rgba(46, 50, 58, 0.5)", size: 1, zIndex: 0 });
+    expect(edgeDisplay("active")).toEqual({ color: "#1d3a5f", size: 5, zIndex: 2 });
+    expect(edgeDisplay("dimmed")).toEqual({ color: "#e9ebee", size: 2, zIndex: 0 });
+    expect(edgeDisplay("normal")).toEqual({ color: "rgba(91, 100, 116, 0.5)", size: 2, zIndex: 1 });
+    expect(edgeAttributes()).toEqual({ color: "rgba(91, 100, 116, 0.5)", size: 2, zIndex: 0 });
     expect(EDGE_ALPHA).toBe(0.5);
   });
 
-  it("premultiplies a colour by its alpha for the WebGL blending of the graph", () => {
-    expect(premultiplied("#5b6474", 0.5)).toBe("rgba(46, 50, 58, 0.5)");
-    expect(premultiplied("#ffffff", 1)).toBe("rgba(255, 255, 255, 1)");
-    expect(premultiplied("#0f1b2d", 0)).toBe("rgba(0, 0, 0, 0)");
+  it("gives the renderer the full edge width, twice the half-width the thicknesses 1, 2.5 and 1.7 describe", () => {
+    expect(EDGE_SIZE_PER_THICKNESS).toBe(2);
+    expect(edgeSize(1)).toBe(2);
+    expect(edgeSize(2.5)).toBe(5);
+    expect(MIN_EDGE_SIZE).toBeCloseTo(3.4, 12);
+    expect(EDGE_STYLES.normal.size).toBeLessThan(MIN_EDGE_SIZE);
+    expect(EDGE_STYLES.active.size).toBeGreaterThan(MIN_EDGE_SIZE);
+  });
+
+  it("keeps the arrow head at 5 and 4 times the half-width of the edge", () => {
+    expect(ARROW_HEAD).toEqual({ lengthRatio: 2.5, widthRatio: 2 });
+    for (const style of Object.values(EDGE_STYLES)) {
+      const halfWidth = style.size / EDGE_SIZE_PER_THICKNESS;
+      expect(ARROW_HEAD.lengthRatio * style.size).toBeCloseTo(5 * halfWidth, 12);
+      expect(ARROW_HEAD.widthRatio * style.size).toBeCloseTo(4 * halfWidth, 12);
+    }
+    expect(ARROW_HEAD.lengthRatio * EDGE_STYLES.active.size).toBe(12.5);
+    expect(ARROW_HEAD.widthRatio * EDGE_STYLES.active.size).toBe(10);
+  });
+
+  it("writes a colour with straight alpha, because the renderer blends it itself", () => {
+    expect(withAlpha("#5b6474", 0.5)).toBe("rgba(91, 100, 116, 0.5)");
+    expect(withAlpha("#ffffff", 1)).toBe("rgba(255, 255, 255, 1)");
+    expect(withAlpha("#0f1b2d", 0)).toBe("rgba(15, 27, 45, 0)");
   });
 
   it("uses only palette colours for labels and active edges", () => {
@@ -207,7 +257,7 @@ describe("node and edge attributes", () => {
       EDGE_STYLES.active.color,
     ];
     for (const colour of colours) expect(PALETTE.has(colour)).toBe(true);
-    expect(EDGE_STYLES.normal.color).toBe(premultiplied("#5b6474", EDGE_ALPHA));
+    expect(EDGE_STYLES.normal.color).toBe(withAlpha("#5b6474", EDGE_ALPHA));
   });
 
   it("dims the context in a light, cool grey that stays behind every label colour", () => {
