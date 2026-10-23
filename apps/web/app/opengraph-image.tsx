@@ -176,8 +176,9 @@ export default function OpengraphImage() {
 
           <div style={{ display: "flex", flexDirection: "column", width: 620, fontSize: 19, lineHeight: 1.5, color: NAVY_300 }}>
             <div style={{ width: 56, height: 1, backgroundColor: GOLD, marginBottom: 18 }} />
-            <div style={{ display: "flex" }}>GCN und GraphSAGE gegen Baselines und eine MLP-Kontrolle,</div>
-            <div style={{ display: "flex" }}>zeitlicher Split, PR-AUC, alle Ergebnisse vorab berechnet.</div>
+            <div style={{ display: "flex" }}>GCN und GraphSAGE gegen Gradient Boosting, Baselines</div>
+            <div style={{ display: "flex" }}>und eine MLP-Kontrolle: zeitlicher Split, PR-AUC,</div>
+            <div style={{ display: "flex" }}>alle Ergebnisse vorab berechnet.</div>
           </div>
         </div>
       </div>
