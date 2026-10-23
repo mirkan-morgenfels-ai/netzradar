@@ -21,7 +21,7 @@ const PREVIEW_IMAGE_SOURCES = [
   "../og-glyphs.ts",
 ];
 const PREVIEW_IMAGE_ASSETS = ["../../assets/noto-sans-v27-latin-regular.ttf"];
-const PREVIEW_IMAGE_FINGERPRINT = "a0655a214db84438";
+const PREVIEW_IMAGE_FINGERPRINT = "f4d2f445f66b0704";
 
 function previewImageFingerprint(): string {
   const hash = createHash("sha256");
@@ -48,11 +48,11 @@ describe("pageMetadata", () => {
         type: "website",
         images: [
           {
-            url: "/opengraph-image?v=5",
+            url: "/opengraph-image?v=6",
             type: "image/png",
             width: 1200,
             height: 630,
-            alt: "NetzRadar – Anomalie-Erkennung in Transaktionsnetzwerken: GCN und GraphSAGE gegen Baselines, zeitlicher Split, PR-AUC",
+            alt: "NetzRadar – Anomalie-Erkennung in Transaktionsnetzwerken: GCN und GraphSAGE gegen Gradient Boosting und Baselines, zeitlicher Split, PR-AUC",
           },
         ],
       },
@@ -61,7 +61,7 @@ describe("pageMetadata", () => {
 
   it("ties the preview image URL to its inputs: bump OG_IMAGE_VERSION and the fingerprint together", () => {
     expect({ version: OG_IMAGE_VERSION, fingerprint: previewImageFingerprint() }).toEqual({
-      version: 5,
+      version: 6,
       fingerprint: PREVIEW_IMAGE_FINGERPRINT,
     });
     expect(OG_IMAGE_PATH).toBe(`/opengraph-image?v=${OG_IMAGE_VERSION}`);
@@ -86,6 +86,7 @@ describe("pageMetadata", () => {
   });
 
   it("describes the link preview without claims about runtime requests", () => {
+    expect(OG_DESCRIPTION).toContain("Gradient Boosting");
     expect(OG_DESCRIPTION).toContain("MLP-Kontrolle");
     expect(OG_DESCRIPTION).not.toContain("Laufzeit-Anfragen");
   });

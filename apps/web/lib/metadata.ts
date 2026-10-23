@@ -5,16 +5,16 @@ export const OG_LOCALE = "de_DE";
 
 export const OG_SUBTITLE = "Anomalie-Erkennung in Transaktionsnetzwerken";
 
-export const OG_IMAGE_VERSION = 5;
+export const OG_IMAGE_VERSION = 6;
 
 export const OG_IMAGE_PATH = `/opengraph-image?v=${OG_IMAGE_VERSION}`;
 
 export const OG_IMAGE_SIZE = { width: 1200, height: 630 } as const;
 
-export const OG_IMAGE_ALT = `${SITE_NAME} – ${OG_SUBTITLE}: GCN und GraphSAGE gegen Baselines, zeitlicher Split, PR-AUC`;
+export const OG_IMAGE_ALT = `${SITE_NAME} – ${OG_SUBTITLE}: GCN und GraphSAGE gegen Gradient Boosting und Baselines, zeitlicher Split, PR-AUC`;
 
 export const OG_DESCRIPTION =
-  "GCN und GraphSAGE gegen Baselines und eine MLP-Kontrolle auf einem synthetischen Transaktionsnetz: zeitlicher Split, PR-AUC, Einordnung mit Homophilie-Vorbehalt. Alle Ergebnisse sind vorab berechnet.";
+  "GCN und GraphSAGE gegen Gradient Boosting, Baselines und eine MLP-Kontrolle auf einem synthetischen Transaktionsnetz: zeitlicher Split, PR-AUC, Einordnung mit Homophilie-Vorbehalt. Alle Ergebnisse sind vorab berechnet.";
 
 export interface PageMetadataInput {
   title: string;
