@@ -1,6 +1,6 @@
 {
   "schemaVersion": 4,
-  "generatedAt": "2026-10-08T10:01:05Z",
+  "generatedAt": "2026-10-29T12:12:07Z",
   "dataset": {
     "name": "synthetic",
     "displayName": "Synthetisches Transaktionsnetz",
@@ -99,7 +99,7 @@
       "displayName": "Robuste Z-Scores (Einzelmerkmale)",
       "featureSet": "local",
       "seed": 42,
-      "date": "2026-10-08",
+      "date": "2026-10-28",
       "hyperparameters": {
         "center": "median",
         "scale": "mad",
@@ -130,7 +130,7 @@
       "precisionAtRecall50": 0.1324,
       "recallAtPrecision50": 0.0211,
       "accuracy": 0.8744,
-      "accuracyThreshold": "oberste 2 % der Test-Scores (gelabelte Testknoten) gelten als auffällig, Gleichstände an der Schwelle eingeschlossen",
+      "accuracyThreshold": "oberste 2 % der Test-Scores (gelabelte Testknoten) gelten als markiert, Gleichstände an der Schwelle eingeschlossen",
       "accuracyFlagged": 22,
       "accuracyTruePositives": 5,
       "prCurve": [
@@ -545,7 +545,7 @@
       "displayName": "Isolation Forest (Einzelmerkmale + Graphmaße)",
       "featureSet": "local+graph",
       "seed": 42,
-      "date": "2026-10-08",
+      "date": "2026-10-28",
       "hyperparameters": {
         "nEstimators": 200,
         "contamination": 0.02,
@@ -588,7 +588,7 @@
       "precisionAtRecall50": 0.134,
       "recallAtPrecision50": 0.0,
       "accuracy": 0.8744,
-      "accuracyThreshold": "oberste 2 % der Test-Scores (gelabelte Testknoten) gelten als auffällig, Gleichstände an der Schwelle eingeschlossen",
+      "accuracyThreshold": "oberste 2 % der Test-Scores (gelabelte Testknoten) gelten als markiert, Gleichstände an der Schwelle eingeschlossen",
       "accuracyFlagged": 18,
       "accuracyTruePositives": 3,
       "prCurve": [
@@ -1003,7 +1003,7 @@
       "displayName": "Gradient Boosting (ohne Kanten)",
       "featureSet": "local+graph",
       "seed": 42,
-      "date": "2026-10-08",
+      "date": "2026-10-28",
       "hyperparameters": {
         "estimator": "HistGradientBoostingClassifier",
         "loss": "log_loss",
@@ -1158,7 +1158,7 @@
       "precisionAtRecall50": 0.64,
       "recallAtPrecision50": 0.5789,
       "accuracy": 0.9049,
-      "accuracyThreshold": "oberste 2 % der Test-Scores (gelabelte Testknoten) gelten als auffällig, Gleichstände an der Schwelle eingeschlossen",
+      "accuracyThreshold": "oberste 2 % der Test-Scores (gelabelte Testknoten) gelten als markiert, Gleichstände an der Schwelle eingeschlossen",
       "accuracyFlagged": 18,
       "accuracyTruePositives": 16,
       "prCurve": [
@@ -1573,7 +1573,7 @@
       "displayName": "GCN (2 Schichten)",
       "featureSet": "local+graph",
       "seed": 42,
-      "date": "2026-10-06",
+      "date": "2026-10-28",
       "hyperparameters": {
         "architecture": "GCNConv",
         "layers": 2,
@@ -1700,7 +1700,7 @@
           "max": 0.8148
         },
         "environment": {
-          "torch": "2.8.0+cpu",
+          "torch": "2.13.0+cpu",
           "torchGeometric": "2.7.0",
           "python": "3.12.15",
           "platform": "Windows",
@@ -1712,7 +1712,7 @@
       "precisionAtRecall50": 0.9608,
       "recallAtPrecision50": 0.8316,
       "accuracy": 0.9096,
-      "accuracyThreshold": "oberste 2 % der Test-Scores (gelabelte Testknoten) gelten als auffällig, Gleichstände an der Schwelle eingeschlossen",
+      "accuracyThreshold": "oberste 2 % der Test-Scores (gelabelte Testknoten) gelten als markiert, Gleichstände an der Schwelle eingeschlossen",
       "accuracyFlagged": 18,
       "accuracyTruePositives": 18,
       "prCurve": [
@@ -2127,7 +2127,7 @@
       "displayName": "GraphSAGE (2 Schichten)",
       "featureSet": "local+graph",
       "seed": 42,
-      "date": "2026-10-06",
+      "date": "2026-10-28",
       "hyperparameters": {
         "architecture": "SAGEConv(aggr=mean)",
         "layers": 2,
@@ -2254,7 +2254,7 @@
           "max": 0.8941
         },
         "environment": {
-          "torch": "2.8.0+cpu",
+          "torch": "2.13.0+cpu",
           "torchGeometric": "2.7.0",
           "python": "3.12.15",
           "platform": "Windows",
@@ -2266,7 +2266,7 @@
       "precisionAtRecall50": 1.0,
       "recallAtPrecision50": 0.9474,
       "accuracy": 0.9096,
-      "accuracyThreshold": "oberste 2 % der Test-Scores (gelabelte Testknoten) gelten als auffällig, Gleichstände an der Schwelle eingeschlossen",
+      "accuracyThreshold": "oberste 2 % der Test-Scores (gelabelte Testknoten) gelten als markiert, Gleichstände an der Schwelle eingeschlossen",
       "accuracyFlagged": 18,
       "accuracyTruePositives": 18,
       "prCurve": [
@@ -2681,7 +2681,7 @@
       "displayName": "MLP ohne Kanten (2 Schichten)",
       "featureSet": "local+graph",
       "seed": 42,
-      "date": "2026-10-06",
+      "date": "2026-10-28",
       "hyperparameters": {
         "architecture": "Linear",
         "layers": 2,
@@ -2808,7 +2808,7 @@
           "max": 0.401
         },
         "environment": {
-          "torch": "2.8.0+cpu",
+          "torch": "2.13.0+cpu",
           "torchGeometric": "2.7.0",
           "python": "3.12.15",
           "platform": "Windows",
@@ -2820,7 +2820,7 @@
       "precisionAtRecall50": 0.2816,
       "recallAtPrecision50": 0.2211,
       "accuracy": 0.8955,
-      "accuracyThreshold": "oberste 2 % der Test-Scores (gelabelte Testknoten) gelten als auffällig, Gleichstände an der Schwelle eingeschlossen",
+      "accuracyThreshold": "oberste 2 % der Test-Scores (gelabelte Testknoten) gelten als markiert, Gleichstände an der Schwelle eingeschlossen",
       "accuracyFlagged": 18,
       "accuracyTruePositives": 12,
       "prCurve": [

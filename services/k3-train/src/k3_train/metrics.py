@@ -17,7 +17,7 @@ RANDOM_QUANTILE = 0.95
 RANDOM_CHUNK = 1000
 RANDOM_MAX_CELLS = 1_000_000
 ACCURACY_THRESHOLD_TEXT = (
-    "oberste 2 % der Test-Scores (gelabelte Testknoten) gelten als auffällig, "
+    "oberste 2 % der Test-Scores (gelabelte Testknoten) gelten als markiert, "
     "Gleichstände an der Schwelle eingeschlossen"
 )
 

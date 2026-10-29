@@ -16,13 +16,6 @@ export const LABEL_PHRASE: Record<NodeLabel, string> = {
   unknown: "ohne Label",
 };
 
-const EXPORTED_FLAG_TEXT = "als auffällig";
-const FLAG_TEXT = "als markiert";
-
-export function accuracyThresholdText(text: string): string {
-  return text.replaceAll(EXPORTED_FLAG_TEXT, FLAG_TEXT);
-}
-
 export const METHOD_TEXT: Record<Method, string> = {
   zscore: "Robuste Z-Scores",
   iforest: "Isolation Forest",

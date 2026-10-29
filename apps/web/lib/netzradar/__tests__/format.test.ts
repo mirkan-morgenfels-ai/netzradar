@@ -5,7 +5,6 @@ import {
   METHOD_KIND_TEXT,
   METHOD_SHORT_TEXT,
   METHOD_TEXT,
-  accuracyThresholdText,
   formatDateRange,
   formatDecimal,
   formatInteger,
@@ -100,15 +99,6 @@ describe("label and score terms", () => {
   it("always carries the word Label when a label stands alone", () => {
     expect(LABEL_PHRASE).toEqual({ illicit: "Label illegal", licit: "Label legal", unknown: "ohne Label" });
     for (const phrase of Object.values(LABEL_PHRASE)) expect(phrase).toMatch(/Label/);
-  });
-
-  it("shows flagged nodes of the exported accuracy threshold as markiert", () => {
-    expect(
-      accuracyThresholdText(
-        "oberste 2 % der Test-Scores (gelabelte Testknoten) gelten als auffällig, Gleichstände an der Schwelle eingeschlossen",
-      ),
-    ).toBe("oberste 2 % der Test-Scores (gelabelte Testknoten) gelten als markiert, Gleichstände an der Schwelle eingeschlossen");
-    expect(accuracyThresholdText("oberste 2 % gelten als markiert")).toBe("oberste 2 % gelten als markiert");
   });
 
   it("keeps auffällig out of every label and method text", () => {

@@ -37,7 +37,6 @@ import {
 import { curveSeries, METHOD_CURVE_STYLES, prevalenceLevel } from "@/lib/netzradar/curves";
 import { netzRadarData } from "@/lib/netzradar/data";
 import {
-  accuracyThresholdText,
   FEATURE_SET_TEXT,
   formatDateRange,
   formatDecimal,
@@ -468,7 +467,7 @@ export default function NetzRadarPage() {
   const trees = iforest ? numberParameter(iforest.hyperparameters, "nEstimators") : null;
   const contamination = iforest ? numberParameter(iforest.hyperparameters, "contamination") : null;
   const madScale = zscore ? numberParameter(zscore.hyperparameters, "madScale") : null;
-  const accuracyThresholds = [...new Set(runs.map((run) => accuracyThresholdText(run.accuracyThreshold)))];
+  const accuracyThresholds = [...new Set(runs.map((run) => run.accuracyThreshold))];
   const exportTime = formatIsoTimeUtc(metrics.generatedAt);
   const ratioWeight = searchWeight(runs, "trainRatio");
   const fixedWeight = searchWeight(runs, "fixed");

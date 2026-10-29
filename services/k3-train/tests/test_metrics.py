@@ -249,3 +249,8 @@ def test_seed_spread_by_hand() -> None:
         seed_spread_summary([42, 43], 42, [0.5])
     with pytest.raises(ValueError, match="fehlt"):
         seed_spread_summary([43, 44], 42, [0.5, 0.6])
+
+
+def test_accuracy_threshold_text_says_markiert():
+    assert "gelten als markiert" in metrics.ACCURACY_THRESHOLD_TEXT
+    assert "auffällig" not in metrics.ACCURACY_THRESHOLD_TEXT
