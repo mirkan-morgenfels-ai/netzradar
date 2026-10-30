@@ -822,3 +822,13 @@ describe("parseNetzRadarData checks both start sets in nodes.json", () => {
     expectSchemaError(input, /nodes\.nodes\[0\]\.hopGnn: null erwartet, weil scoreGnnMethod null ist/);
   });
 });
+
+describe("Begriffsregel im Export", () => {
+  it("names flagged nodes of the accuracy threshold markiert in every exported run", () => {
+    for (const run of netzRadarData.metrics.runs) {
+      expect(run.accuracyThreshold).toBe(
+        "oberste 2 % der Test-Scores (gelabelte Testknoten) gelten als markiert, Gleichstände an der Schwelle eingeschlossen",
+      );
+    }
+  });
+});
