@@ -4,7 +4,7 @@ Die Befehle und die CI stehen im README unter „Tests“. Hier steht, was die d
 
 ## pytest (services/k3-train)
 
-245 Tests (seit 29.10.2026 mit dem Test, dass der Export „gelten als markiert“ sagt; davor 244, bis Datenvertrag 3: 171, mit Datenvertrag 4 vor dem IBM-AML-Lader: 198, mit dem IBM-AML-Lader vor der Prüfung vom 16.10.2026: 242). In einer venv ohne torch (wie der CI-Job `train-core`): 217 bestanden, 2 Dateien übersprungen (01.11.2026; vorher 216). Ohne das Extra `gnn` werden die 28 Tests in `test_gnn.py` und `test_gnn_pipeline.py` mit Grund übersprungen; mit `K3_REQUIRE_GNN=1` bricht pytest dann ab.
+245 Tests (seit 29.10.2026 mit dem Test, dass der Export „gelten als markiert“ sagt; davor 244, bis Datenvertrag 3: 171, mit Datenvertrag 4 vor dem IBM-AML-Lader: 198, mit dem IBM-AML-Lader vor der Prüfung vom 16.10.2026: 242). In einer venv ohne torch (wie der CI-Job `train-core`): 217 bestanden, 2 Dateien übersprungen (01.11.2026; vorher 216). Mit dem Extra in der CI (Job `train`, 01.11.2026): 245 bestanden. Ohne das Extra `gnn` werden die 28 Tests in `test_gnn.py` und `test_gnn_pipeline.py` mit Grund übersprungen; mit `K3_REQUIRE_GNN=1` bricht pytest dann ab.
 
 - Generator: Determinismus bei gleichem Seed, Knoten je Zeitschritt, Kanten nur innerhalb eines Zeitschritts, je Zeitschritt eine schwache Zusammenhangskomponente, keine Selbstschleifen und Duplikate, Form der Muster, homophile illicit-Nachbarschaften.
 - Laden: Elliptic-Format an einer erfundenen Mini-Fixture einschließlich der Trennung lokaler und aggregierter Merkmale, Kantenbereinigung an einem Handbeispiel, verlustfreies Schreiben und Lesen der aufbereiteten Dateien.
