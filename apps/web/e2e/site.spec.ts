@@ -120,6 +120,8 @@ test("footer and project page link the public repository and mirkandeniz.de", as
 
   await page.goto("/datenschutz");
   await expect(page.getByRole("main")).toContainText("Diese Seite verlinkt auf die Website mirkandeniz.de und die Projekte DepotDoktor und KontoKlar");
+  await expect(page.getByRole("main")).toContainText("guenkaya@mirkandeniz.de");
+  await expect(page.getByRole("main")).toContainText("IONOS SE, Elgendorfer Straße 57, 56410 Montabaur");
   await expect(page.getByRole("main")).toContainText("Quellcode-Repositories bei GitHub (GitHub, Inc., USA)");
   await expect(page.getByRole("main")).not.toContainText("JSON-Dateien");
 });
@@ -129,6 +131,7 @@ for (const legal of LEGAL_PAGES) {
     await page.goto(legal.path);
     await expect(page.getByRole("heading", { level: 1, name: legal.heading })).toBeVisible();
     await expect(page.getByText(`Stand: ${LEGAL_UPDATED}`, { exact: true })).toBeVisible();
+    await expect(page.getByRole("main")).not.toContainText("gmail.com");
   });
 }
 
