@@ -15,35 +15,6 @@ const GOLD = "#c9a548";
 const GOLD_LIGHT = "#d8bd72";
 const NAVY = "#0b1626";
 
-const MARK_CENTER: readonly [number, number] = [15.5, 16.5];
-
-const MARK_NODES: ReadonlyArray<readonly [number, number]> = [
-  [10.4, 14.6],
-  [19.8, 12.8],
-  [16.6, 22.6],
-];
-
-export function BrandMark({ className }: { className?: string }) {
-  const [cx, cy] = MARK_CENTER;
-  return (
-    <svg viewBox="0 0 32 32" aria-hidden="true" focusable="false" className={className}>
-      <path d="M16 1.75 30.25 16 16 30.25 1.75 16Z" fill="none" stroke="currentColor" strokeWidth="1.4" />
-      <path
-        d={MARK_NODES.map(([x, y]) => `M${cx} ${cy} ${x} ${y}`).join("")}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.1"
-        strokeOpacity="0.9"
-        strokeLinecap="round"
-      />
-      {MARK_NODES.map(([x, y]) => (
-        <circle key={`${x}-${y}`} cx={x} cy={y} r="1.8" fill={NAVY} stroke="currentColor" strokeWidth="1.1" />
-      ))}
-      <circle cx={cx} cy={cy} r="2.3" fill="currentColor" />
-    </svg>
-  );
-}
-
 export function HeroOrnament({ idPrefix, className }: { idPrefix: string; className?: string }) {
   const fadeId = `${idPrefix}-fade`;
   const maskId = `${idPrefix}-mask`;

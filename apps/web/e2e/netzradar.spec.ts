@@ -422,11 +422,8 @@ for (const width of AXE_WIDTHS) {
   });
 }
 
-test("start page links to the NetzRadar page", async ({ page }) => {
+test("start address opens the NetzRadar page directly", async ({ page }) => {
   await page.goto("/");
-  const link = page.getByTestId("project-netzradar").getByRole("link", { name: /^Live ansehen/ });
-  await expect(link).toHaveAttribute("href", "/projects/netzradar");
-  await link.click();
   await expect(page).toHaveURL(/\/projects\/netzradar$/);
   await expect(page.getByRole("heading", { level: 1, name: "NetzRadar" })).toBeVisible();
 });

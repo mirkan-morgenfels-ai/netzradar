@@ -5,7 +5,7 @@ Anomalie-Erkennung in Transaktionsnetzwerken: klassische Baselines und Gradient 
 [![CI](https://github.com/mirkan-morgenfels-ai/netzradar/actions/workflows/ci.yml/badge.svg)](https://github.com/mirkan-morgenfels-ai/netzradar/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 
-Live-Demo: https://netzradar.vercel.app/projects/netzradar
+Live-Demo: https://netzradar.mirkandeniz.de/projects/netzradar (die frühere Adresse netzradar.vercel.app leitet dorthin weiter). Werdegang und alle Projekte: https://mirkandeniz.de
 
 ## Auf einen Blick / At a glance
 
@@ -220,7 +220,7 @@ pnpm install
 pnpm dev
 ```
 
-Danach unter `http://localhost:3000/projects/netzradar`. Umgebungsvariablen sind nicht nötig; `NEXT_PUBLIC_SITE_URL` setzt optional die Basis-URL für Metadaten, Sitemap und Link-Vorschau (Standard `https://netzradar.vercel.app`).
+Danach unter `http://localhost:3000/projects/netzradar`. Umgebungsvariablen sind nicht nötig; `NEXT_PUBLIC_SITE_URL` setzt optional die Basis-URL für Metadaten, Sitemap und Link-Vorschau (Standard `https://netzradar.mirkandeniz.de`).
 
 ## Tests
 
@@ -240,7 +240,7 @@ pnpm build
 pnpm test:e2e
 ```
 
-pytest (244 Tests), Vitest (275 Tests in 10 Dateien) und Playwright (29 Tests, davon 3 axe-Läufe bei 390, 768 und 1280 px, je mit beiden Startmengen), Stand 21.10.2026 mit Datenvertrag 4, Next.js 16 und Sigma.js 4. Was sie im Einzelnen prüfen, steht in [`docs/tests.md`](docs/tests.md). Ohne das Extra `gnn` überspringt pytest die 28 GNN-Tests mit Grund, mit `K3_REQUIRE_GNN=1` bricht es dann ab.
+pytest (245 Tests), Vitest (276 Tests in 10 Dateien) und Playwright (30 Tests, davon 3 axe-Läufe bei 390, 768 und 1280 px, je mit beiden Startmengen), Stand 01.11.2026 mit Datenvertrag 4, Next.js 16 und Sigma.js 4. Was sie im Einzelnen prüfen, steht in [`docs/tests.md`](docs/tests.md). Ohne das Extra `gnn` überspringt pytest die 28 GNN-Tests mit Grund, mit `K3_REQUIRE_GNN=1` bricht es dann ab.
 
 Die CI führt bei jedem Push auf `main` und jedem Pull Request drei Jobs auf `ubuntu-24.04` aus (Leserechte, ältere Läufe desselben Zweigs werden abgebrochen, Zeitlimits 15, 20 und 15 min): `web` mit install, typecheck, lint, test, build und E2E; `train` mit `uv sync --locked --extra gnn` (uv 0.12.23, `UV_LOCKED=1` für alle `uv run`, `K3_REQUIRE_GNN=1`), `make lint` (ruff check und ruff format --check), `make test`, `make verify` gegen die eingecheckten Dateien einschließlich der GNN-Läufe (ohne GNN-Runs in `metrics.json` rot) und danach `make data SYNTH=1`, `make baseline`, `make gnn` und `make export` als Durchlauf der Kommandozeile; `train-core` mit `uv sync --locked` ohne Extra und `uv run pytest`, damit ein versehentlicher Import von torch in den Kernmodulen auffällt (die GNN-Tests werden dort mit Grund übersprungen). Die CI trainiert dabei alle Verfahren einschließlich der GNN auf dem synthetischen Netz voll neu, nicht nur als Smoke-Test, und vergleicht metrics.json, nodes.json, edges.json und die jüngsten Laufprotokolle mit Toleranz 1e-4. Für die fünf Verfahren bis Datenvertrag 3 ist das bestätigt (erstmals am 07.10.2026, Lauf https://github.com/mirkan-morgenfels-ai/netzradar/actions/runs/37554990175); damit sind sie unter Windows und Linux reproduziert, macOS ist nicht geprüft. Das Gradient Boosting ist seit dem 08.10.2026 dabei und bisher nur unter Windows bestätigt; die Bestätigung unter Linux kommt mit dem ersten CI-Lauf mit Datenvertrag 4. Der Job `train` dauerte bis dahin rund 7 min (verify 186 s, gnn 178 s unter Linux); das Gradient Boosting rechnet in `make test`, `make verify` und `make baseline` je einmal mit, lokal unter Windows sind das je rund eine Minute. Dependabot schlägt monatlich gruppierte Updates für npm, GitHub Actions und die Python-Pakete vor: npm-Majors getrennt von Minor- und Patch-Updates, damit ein Major-Sprung die übrigen Updates nicht blockiert, und die Numerik-Pakete (NetworkX, NumPy, pandas, scikit-learn, SciPy, threadpoolctl) getrennt von pytest und ruff, weil sie die Kennzahlen verschieben können; torch und PyTorch Geometric nur als Patch-Version, weil eine neue Minor-Version die Kennzahlen verschieben kann. TypeScript 7 schlägt Dependabot nicht vor, weil typescript-eslint es noch nicht unterstützt (Begründung in `CLAUDE.md`, Abschnitt „Stack“).
 
@@ -273,9 +273,10 @@ services/k3-train/                    Python 3.12, uv-Projekt, Paket k3_train
   tests/                              pytest, Datenvertrag, erfundene Fixtures für Elliptic und IBM-AML
   data/raw/, data/processed/          lokal, nicht im Repository
 data/k3/                              nodes.json, edges.json, metrics.json
-apps/web/app/                         Startseite, Rechtsseiten, Layout, opengraph-image, apple-icon, sitemap, robots
+apps/web/app/                         Rechtsseiten, Layout, 404, opengraph-image, apple-icon, sitemap, robots
 apps/web/app/projects/netzradar/      Projektseite
-apps/web/components/                  NavLinks (Hauptnavigation), ExternalLink, BrandMark, LegalPage
+apps/web/components/                  site/ (Kopf mit Rückweg zu mirkandeniz.de, Hauptnavigation, Fuß), ExternalLink,
+                                      BrandMark, LegalPage
 apps/web/components/netzradar/        NetzRadarExplorer, SeedSetSwitch (Umschalter der Startmengen), GraphView,
                                       GraphLegend, NodeDetail, NodeSymbol, TopNodesTable, MetricsTable, SearchTable,
                                       ScrollRegion, MethodIndex
@@ -285,6 +286,7 @@ apps/web/lib/netzradar/               types.ts, data.ts (Datenvertrag v4 und Pr�
                                       und der Methodik), curves.ts, messagePassing.ts, Unit-Tests
 apps/web/assets/                      Schrift Noto Sans für das Vorschaubild (OFL 1.1, nur beim Build gelesen)
 apps/web/e2e/                         Playwright-Tests
+apps/web/next.config.ts               Sicherheits-Header, Weiterleitungen („/“ auf die Projektseite, alte Vercel-Adresse)
 packages/ui/                          Basiskomponenten
 packages/legal/                       Betreiberangaben, Disclaimer, Datenschutztexte
 packages/charts/                      Palette (Export ./theme ohne Recharts), PR-Kurve (Recharts)
@@ -317,7 +319,7 @@ Python 3.12, uv, pandas, NumPy, scikit-learn (Isolation Forest, HistGradientBoos
 
 ## Roadmap
 
-- v1: Baseline, GCN und GraphSAGE, zeitlicher Split, Export, statische Seite. Umgesetzt auf dem synthetischen Netz: Generator, zeitlicher Split mit Prüfung, robuste Z-Scores, Isolation Forest mit Graphmaßen, Gradient Boosting ohne Kanten, GCN, GraphSAGE und MLP-Kontrolle, Kennzahlen mit Zufallsreferenz und Seed-Streuung, Export (Datenvertrag Version 4) mit Startknoten nach Isolation-Forest- und nach GNN-Score, `verify` in der CI unter Linux und die Seite `/projects/netzradar` (https://netzradar.vercel.app) mit Graph-Ausschnitt und Umschalter der Startmengen, Metriktafel mit Spanne über die Seeds, PR-Kurven, `scoreGnn`, Suche am Validierungsteil, Methodik und einer aus den Zahlen berechneten Einordnung mit Homophilie-Vorbehalt. Lader für Elliptic und IBM-AML (nur lokal, nur an erfundenen Fixtures getestet). Entschieden am 16.10.2026: Die öffentliche Demo bleibt das synthetische Netz, IBM-AML wird nur lokal ausgewertet, eine Live-Demo auf Hugging Face Spaces gibt es nicht. Offen: Case-Study, Läufe mit gestörter Nachbarschaft (Sensitivität gegen Homophilie), Baseline mit gemittelten Nachbarmerkmalen; außerdem lokale Läufe auf Elliptic und IBM-AML.
+- v1: Baseline, GCN und GraphSAGE, zeitlicher Split, Export, statische Seite. Umgesetzt auf dem synthetischen Netz: Generator, zeitlicher Split mit Prüfung, robuste Z-Scores, Isolation Forest mit Graphmaßen, Gradient Boosting ohne Kanten, GCN, GraphSAGE und MLP-Kontrolle, Kennzahlen mit Zufallsreferenz und Seed-Streuung, Export (Datenvertrag Version 4) mit Startknoten nach Isolation-Forest- und nach GNN-Score, `verify` in der CI unter Linux und die Seite `/projects/netzradar` (https://netzradar.mirkandeniz.de/projects/netzradar) mit Graph-Ausschnitt und Umschalter der Startmengen, Metriktafel mit Spanne über die Seeds, PR-Kurven, `scoreGnn`, Suche am Validierungsteil, Methodik und einer aus den Zahlen berechneten Einordnung mit Homophilie-Vorbehalt. Lader für Elliptic und IBM-AML (nur lokal, nur an erfundenen Fixtures getestet). Entschieden am 16.10.2026: Die öffentliche Demo bleibt das synthetische Netz, IBM-AML wird nur lokal ausgewertet, eine Live-Demo auf Hugging Face Spaces gibt es nicht. Offen: Case-Study, Läufe mit gestörter Nachbarschaft (Sensitivität gegen Homophilie), Baseline mit gemittelten Nachbarmerkmalen; außerdem lokale Läufe auf Elliptic und IBM-AML.
 - v2: temporale GNN-Variante, GAT im Vergleich, gerichtete Nachrichten (getrennt nach Ein- und Ausgang), Sampling gegen Klassengewichtung, Sensitivität gegen Homophilie (Tarnkanten, gradtreue Umverdrahtung).
 - v3: vorberechnete Erklärungen der markierten Muster in verständlicher Sprache (Sprachmodell im Batch-Modus, keine Laufzeitkosten).
 
@@ -340,8 +342,10 @@ NetzRadar ist eine Methodenstudie zur Anomalie-Erkennung in Transaktionsnetzwerk
 
 ## Weitere Projekte
 
-- **DepotDoktor**: Depot-Steuer- und Performance-Analyzer für Broker-CSV-Exporte. Die Auswertung läuft vollständig im Browser. Live-Demo: https://depotdoktor.vercel.app/projects/depotdoktor, Repo: https://github.com/mirkan-morgenfels-ai/depotdoktor
-- **KontoKlar**: Kategorisiert Bankumsätze aus CSV-Exporten und zeigt, wohin das Geld geht. Live-Demo: https://kontoklar-eight.vercel.app/projects/kontoklar, Repo: https://github.com/mirkan-morgenfels-ai/kontoklar
+Alle Projekte, Werdegang und Kontakt stehen auf [mirkandeniz.de](https://mirkandeniz.de/projekte). Kopf und Fuß jeder Projektseite führen dorthin zurück.
+
+- **DepotDoktor**: Depot-Steuer- und Performance-Analyzer für Broker-CSV-Exporte. Die Auswertung läuft vollständig im Browser. Live-Demo: https://depotdoktor.mirkandeniz.de/projects/depotdoktor, Repo: https://github.com/mirkan-morgenfels-ai/depotdoktor
+- **KontoKlar**: Kategorisiert Bankumsätze aus CSV-Exporten und zeigt, wohin das Geld geht. Live-Demo: https://kontoklar.mirkandeniz.de/projects/kontoklar, Repo: https://github.com/mirkan-morgenfels-ai/kontoklar
 
 ## Lizenz
 
