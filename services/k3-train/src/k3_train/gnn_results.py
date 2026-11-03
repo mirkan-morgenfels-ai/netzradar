@@ -111,12 +111,10 @@ def load_gnn(out_dir: Path) -> GnnOutput:
     if not summary_path.is_file():
         raise FileNotFoundError(f"Keine GNN-Ergebnisse in {out_dir}")
     summary = read_json(summary_path)
-    scores = pd.read_csv(
-        out_dir / SCORES_FILE, dtype={"node_id": str}, float_precision="round_trip"
-    )
+    scores = pd.read_csv(out_dir / SCORES_FILE, dtype={"node_id": str})
     expected = [score_column(run["method"]) for run in summary["runs"]]
     if any(column not in scores.columns for column in expected):
-        raise ValueError("GNN-Dateien sind unvollstaendig")
+        raise ValueError("GNN-Dateien sind unvollständig")
     return GnnOutput(
         dataset=summary["dataset"],
         split=summary["split"],

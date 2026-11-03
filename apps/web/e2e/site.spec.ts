@@ -5,7 +5,7 @@ const LEGAL_PAGES = [
   { path: "/datenschutz", heading: "Datenschutzerklärung" },
   { path: "/nutzungsbedingungen", heading: "Nutzungsbedingungen" },
 ];
-const LEGAL_UPDATED = "07.10.2026";
+const LEGAL_UPDATED = "03.11.2026";
 const REPO_BASE = "https://github.com/mirkan-morgenfels-ai";
 const NETZRADAR_REPO = `${REPO_BASE}/netzradar`;
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://netzradar.vercel.app").replace(/\/+$/, "");
@@ -132,6 +132,8 @@ for (const legal of LEGAL_PAGES) {
     await page.goto(legal.path);
     await expect(page.getByRole("heading", { level: 1, name: legal.heading })).toBeVisible();
     await expect(page.getByText(`Stand: ${LEGAL_UPDATED}`, { exact: true })).toBeVisible();
+    await expect(page.getByRole("main")).not.toContainText("Platzhalter");
+    await expect(page.getByRole("main")).not.toContainText(/[[\]]/);
   });
 }
 

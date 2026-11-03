@@ -258,7 +258,7 @@ dev = [
 requires-dist = [
     { name = "networkx", specifier = ">=3.5,<4" },
     { name = "numpy", specifier = ">=2.2,<3" },
-    { name = "pandas", specifier = ">=2.2,<4" },
+    { name = "pandas", specifier = ">=3.1,<4" },
     { name = "scikit-learn", specifier = ">=1.6,<2" },
     { name = "threadpoolctl", specifier = ">=3.1,<4" },
     { name = "torch", marker = "extra == 'gnn'", specifier = ">=2.8,<2.14", index = "https://download.pytorch.org/whl/cpu" },

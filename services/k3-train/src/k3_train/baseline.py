@@ -32,7 +32,6 @@ IFOREST = MethodSpec(
     display_name="Isolation Forest (Einzelmerkmale + Graphmaße)",
     feature_set="local+graph",
 )
-BASELINE_METHODS = (ZSCORE, IFOREST)
 
 
 def fit_robust_stats(values: np.ndarray) -> RobustStats:

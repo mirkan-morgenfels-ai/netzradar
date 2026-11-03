@@ -49,7 +49,7 @@ def synthetic_split(time_steps: int) -> TemporalSplit:
     if time_steps == SYNTHETIC_REFERENCE_STEPS:
         return SYNTHETIC_SPLIT
     if time_steps < 3:
-        raise SplitError("Fuer einen zeitlichen Split sind mindestens 3 Zeitschritte noetig")
+        raise SplitError("Für einen zeitlichen Split sind mindestens 3 Zeitschritte nötig")
     train_end = min(time_steps - 1, max(1, round(0.7 * time_steps)))
     validation_length = max(1, round(time_steps * 4 / SYNTHETIC_REFERENCE_STEPS))
     validation_start = max(1, train_end - validation_length + 1)
@@ -82,7 +82,7 @@ def split_for(dataset: str, time_steps: int) -> TemporalSplit:
         return ELLIPTIC_SPLIT
     if dataset == "ibm-aml":
         return ibm_aml_split(time_steps)
-    raise SplitError(f"Kein Split fuer Datensatz {dataset} definiert")
+    raise SplitError(f"Kein Split für Datensatz {dataset} definiert")
 
 
 def validate_split(split: TemporalSplit) -> None:
@@ -92,7 +92,7 @@ def validate_split(split: TemporalSplit) -> None:
         ("test", split.test),
     ):
         if steps.start < 1 or steps.start > steps.end:
-            raise SplitError(f"Ungueltiger Bereich fuer {name}: {steps.start}-{steps.end}")
+            raise SplitError(f"Ungültiger Bereich für {name}: {steps.start}-{steps.end}")
     if split.train.end >= split.test.start:
         raise SplitError("Der letzte Trainingsschritt muss vor dem ersten Testschritt liegen")
     if split.validation.start < split.train.start or split.validation.end > split.train.end:

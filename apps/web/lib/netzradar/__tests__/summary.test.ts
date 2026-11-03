@@ -4,7 +4,6 @@ import {
   beatsRandomRankings,
   bestAccuracyAtFlagged,
   bestBaseline,
-  bestEdgeless,
   bestRun,
   boostingTraining,
   compareScores,
@@ -34,14 +33,12 @@ import {
   runDateRange,
   searchWeight,
   seedSpreadOf,
-  selectedCandidate,
   spreadSeeds,
   zeroMadFeatures,
 } from "../summary";
 import { METHODS, type NetNode } from "../types";
 import {
   EVALUATION,
-  boostingCandidate,
   boostingRun,
   boostingTraining as boostingFixture,
   candidate,
@@ -188,12 +185,7 @@ describe("averagedSeparation", () => {
 });
 
 describe("training summaries", () => {
-  it("finds the selected candidate and the epoch limit", () => {
-    const search = [
-      candidate({ positiveWeightRule: "trainRatio", positiveWeight: 8.3409, selected: false }),
-      candidate({ selected: true, validationPrAuc: 0.7364 }),
-    ];
-    expect(selectedCandidate(training({ search }))?.validationPrAuc).toBe(0.7364);
+  it("finds the epoch limit", () => {
     expect(reachedEpochLimit(training({ selectedEpoch: 300, maxEpochs: 300 }))).toBe(true);
     expect(reachedEpochLimit(training({ selectedEpoch: 140, maxEpochs: 300 }))).toBe(false);
   });
@@ -348,12 +340,7 @@ describe("gradient boosting and seed spread", () => {
     expect(boostingTraining(null)).toBeNull();
   });
 
-  it("finds the selected boosting candidate and the tree limit", () => {
-    const search = [
-      boostingCandidate({ maxLeafNodes: 31, validationPrAuc: 0.5034, bestIteration: 68, selected: false }),
-      boostingCandidate(),
-    ];
-    expect(selectedCandidate(boostingFixture({ search }))?.bestIteration).toBe(128);
+  it("finds the tree limit", () => {
     expect(reachedIterationLimit(boostingFixture({ selectedIteration: 300, maxIter: 300 }))).toBe(true);
     expect(reachedIterationLimit(boostingFixture({ selectedIteration: 128, maxIter: 300 }))).toBe(false);
   });
@@ -364,11 +351,9 @@ describe("gradient boosting and seed spread", () => {
     expect(finalTrainRatioWeight([boostingRun(0.6087, { positiveWeightRule: "trainRatio", positiveWeight: 9.2893 })])).toBeNull();
   });
 
-  it("collects the methods without edges and picks the stronger one", () => {
+  it("collects the methods without edges", () => {
     const runs = [run("zscore", 0.1633), boostingRun(0.6087), learnedRun("gcn", 0.7897, 0.7364), learnedRun("mlp", 0.3765, 0.497)];
     expect(edgelessRuns(runs).map((entry) => entry.method)).toEqual(["hgb", "mlp"]);
-    expect(bestEdgeless(runs)?.method).toBe("hgb");
-    expect(bestEdgeless([run("zscore", 0.1633)])).toBeNull();
   });
 
   it("reads the seed spread and recognises a spread of 0", () => {

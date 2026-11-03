@@ -55,6 +55,10 @@ def test_small_synthetic_split(small_dataset: Dataset) -> None:
     split = split_for("synthetic", small_dataset.time_steps)
     assert split == TemporalSplit(StepRange(1, 8), StepRange(7, 8), StepRange(9, 12))
     assert_temporal_split_holds(small_dataset, split)
+    with pytest.raises(SplitError, match="mindestens 3 Zeitschritte nötig"):
+        split_for("synthetic", 2)
+    with pytest.raises(SplitError, match="Kein Split für Datensatz unbekannt"):
+        split_for("unbekannt", 12)
 
 
 def test_elliptic_split(elliptic_mini_dir: Path) -> None:
@@ -93,6 +97,9 @@ def test_overlapping_split_is_rejected() -> None:
     faulty = TemporalSplit(StepRange(1, 22), StepRange(18, 21), StepRange(22, 30))
     with pytest.raises(SplitError, match="Trainingsschritt"):
         validate_split(faulty)
+    reversed_range = TemporalSplit(StepRange(5, 4), StepRange(4, 4), StepRange(22, 30))
+    with pytest.raises(SplitError, match="Ungültiger Bereich für train: 5-4"):
+        validate_split(reversed_range)
 
 
 def test_validation_outside_training_is_rejected() -> None:
