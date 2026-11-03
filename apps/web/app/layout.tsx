@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   metadataBase: siteUrl(),
   title: { default: SITE_NAME, template: `%s · ${SITE_NAME}` },
   description:
-    "Methodenstudie zur Anomalie-Erkennung in Transaktionsnetzwerken: klassische Baseline gegen Graph Neural Networks, zeitlicher Split, PR-AUC. Alle Ergebnisse sind vorab berechnet.",
+    "Methodenstudie zur Anomalie-Erkennung in Transaktionsnetzwerken: klassische Baselines und Gradient Boosting gegen Graph Neural Networks, zeitlicher Split, PR-AUC. Alle Ergebnisse sind vorab berechnet.",
   openGraph: {
     title: SITE_NAME,
     description: OG_DESCRIPTION,

@@ -74,9 +74,9 @@ class SynthConfig:
         if self.time_steps < 1:
             raise ValueError("time_steps muss mindestens 1 sein")
         if self.nodes_per_step < 4 * self.fan_size_max:
-            raise ValueError("nodes_per_step ist zu klein fuer die eingebetteten Muster")
+            raise ValueError("nodes_per_step ist zu klein für die eingebetteten Muster")
         if self.time_steps * self.nodes_per_step > MAX_NODES:
-            raise ValueError("Zu viele Knoten fuer das ID-Format")
+            raise ValueError("Zu viele Knoten für das ID-Format")
         for name in (
             "illicit_share",
             "illicit_visibility",
@@ -93,7 +93,7 @@ class SynthConfig:
         )
         for low, high, minimum in ranges:
             if not minimum <= low <= high:
-                raise ValueError("Ungueltige Mustergroessen")
+                raise ValueError("Ungültige Mustergrößen")
 
 
 SMALL_CONFIG = SynthConfig(time_steps=12, nodes_per_step=80)

@@ -25,14 +25,14 @@ def feature_matrix(
     frame = nodes
     if feature_set == "local+graph":
         if measures is None:
-            raise ValueError("Fuer local+graph werden Graphmasse benoetigt")
+            raise ValueError("Für local+graph werden Graphmaße benötigt")
         if measures["node_id"].astype(str).tolist() != nodes["node_id"].astype(str).tolist():
-            raise ValueError("Graphmasse und Knoten haben unterschiedliche Reihenfolge")
+            raise ValueError("Graphmaße und Knoten haben unterschiedliche Reihenfolge")
         frame = pd.concat(
             [nodes.reset_index(drop=True), measures[list(GRAPH_FEATURES)].reset_index(drop=True)],
             axis=1,
         )
     values = frame[columns].to_numpy(dtype=np.float64)
     if not np.isfinite(values).all():
-        raise ValueError("Merkmalsmatrix enthaelt nicht endliche Werte")
+        raise ValueError("Merkmalsmatrix enthält nicht endliche Werte")
     return values, columns

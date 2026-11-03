@@ -9,7 +9,6 @@ export const METHODS = ["zscore", "iforest", "hgb", "gcn", "graphsage", "mlp"] a
 export type Method = (typeof METHODS)[number];
 
 export const BASELINE_METHODS = ["zscore", "iforest"] as const;
-export type BaselineMethod = (typeof BASELINE_METHODS)[number];
 
 export const LEARNED_METHODS = ["hgb", "gcn", "graphsage", "mlp"] as const;
 export type LearnedMethod = (typeof LEARNED_METHODS)[number];

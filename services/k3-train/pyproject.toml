@@ -1,14 +1,14 @@
 [project]
 name = "k3-train"
 version = "0.1.0"
-description = "NetzRadar: Datenaufbereitung, Baseline, GNN und Export fuer die Anomalie-Erkennung in Transaktionsnetzwerken"
+description = "NetzRadar: Datenaufbereitung, Baseline, GNN und Export für die Anomalie-Erkennung in Transaktionsnetzwerken"
 requires-python = ">=3.12,<3.13"
 license = "MIT"
 authors = [{ name = "Mirkan Deniz Günkaya" }]
 dependencies = [
     "networkx>=3.5,<4",
     "numpy>=2.2,<3",
-    "pandas>=2.2,<4",
+    "pandas>=3.1,<4",
     "scikit-learn>=1.6,<2",
     "threadpoolctl>=3.1,<4",
 ]

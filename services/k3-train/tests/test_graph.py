@@ -119,7 +119,7 @@ def test_graph_counts_and_no_self_loops(small_dataset: Dataset) -> None:
 def test_self_loop_is_rejected() -> None:
     nodes = pd.DataFrame({"node_id": ["a", "b"], "time_step": [1, 1]})
     edges = pd.DataFrame({"source": ["a", "b"], "target": ["a", "a"]})
-    with pytest.raises(ValueError, match="Selbstschleifen"):
+    with pytest.raises(ValueError, match="Der Graph enthält Selbstschleifen"):
         build_graph(nodes, edges)
 
 

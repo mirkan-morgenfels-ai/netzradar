@@ -21,7 +21,6 @@ import {
   type SearchCandidate,
   type SeedSet,
   type SeedSpread,
-  type Training,
 } from "./types";
 
 export const PENDING_METHODS: readonly Method[] = LEARNED_METHODS;
@@ -103,10 +102,6 @@ export function edgelessRuns(runs: readonly Run[]): Run[] {
   return runs.filter((run) => (EDGELESS_METHODS as readonly Method[]).includes(run.method));
 }
 
-export function bestEdgeless(runs: readonly Run[]): Run | null {
-  return bestRunAmong(runs, EDGELESS_METHODS);
-}
-
 export function comparisonMargin(evaluation: EvaluationInfo): number {
   return evaluation.randomPrAucQ95 - evaluation.randomPrAucExpected;
 }
@@ -126,11 +121,6 @@ export function bestAccuracyAtFlagged(flagged: number, evaluation: EvaluationInf
 
 export function averagedSeparation(shift: number, neighbours: number, otherClassShare = 0): number {
   return (shift * (1 + neighbours * (1 - 2 * otherClassShare))) / Math.sqrt(neighbours + 1);
-}
-
-export function selectedCandidate<T extends Training>(training: T): T["search"][number] | null {
-  const search: ReadonlyArray<T["search"][number]> = training.search;
-  return search.find((candidate) => candidate.selected) ?? null;
 }
 
 export function reachedEpochLimit(training: NeuralTraining): boolean {

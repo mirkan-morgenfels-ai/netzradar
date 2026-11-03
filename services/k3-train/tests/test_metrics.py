@@ -228,10 +228,12 @@ def test_evaluate_scores_has_contract_keys() -> None:
 def test_invalid_inputs_are_rejected() -> None:
     with pytest.raises(ValueError, match="positive"):
         pr_auc([0, 0], [0.1, 0.2])
-    with pytest.raises(ValueError, match="gleich lange"):
+    with pytest.raises(ValueError, match="Labels und Scores müssen gleich lange"):
         pr_auc([1, 0], [0.1])
-    with pytest.raises(ValueError, match="0/1"):
+    with pytest.raises(ValueError, match="Labels müssen 0/1"):
         pr_auc(["illicit", "licit"], [0.1, 0.2])
+    with pytest.raises(ValueError, match="Scores müssen endlich"):
+        pr_auc([1, 0], [float("nan"), 0.2])
 
 
 def test_seed_spread_by_hand() -> None:
@@ -251,6 +253,6 @@ def test_seed_spread_by_hand() -> None:
         seed_spread_summary([43, 44], 42, [0.5, 0.6])
 
 
-def test_accuracy_threshold_text_says_markiert():
+def test_accuracy_threshold_text_says_markiert() -> None:
     assert "gelten als markiert" in metrics.ACCURACY_THRESHOLD_TEXT
     assert "auffällig" not in metrics.ACCURACY_THRESHOLD_TEXT
