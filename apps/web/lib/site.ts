@@ -73,7 +73,7 @@ export const PROJECTS: readonly Project[] = [
     kicker: "Projekt 03",
     title: "NetzRadar",
     description:
-      "Anomalie-Erkennung in Transaktionsnetzwerken: klassische Baseline gegen Graph Neural Networks, mit zeitlichem Split und PR-AUC.",
+      "Anomalie-Erkennung in Transaktionsnetzwerken: klassische Baselines und Gradient Boosting gegen Graph Neural Networks, mit zeitlichem Split und PR-AUC.",
     href: PROJECT_PATH,
     external: false,
     repo: REPO_URL,

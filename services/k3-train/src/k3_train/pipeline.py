@@ -219,12 +219,8 @@ def load_baseline(out_dir: Path) -> BaselineOutput:
     if not summary_path.is_file():
         raise FileNotFoundError(f"Keine Baseline-Ergebnisse in {out_dir}")
     summary = read_json(summary_path)
-    scores = pd.read_csv(
-        out_dir / "scores.csv", dtype={"node_id": str}, float_precision="round_trip"
-    )
-    measures = pd.read_csv(
-        out_dir / "measures.csv", dtype={"node_id": str}, float_precision="round_trip"
-    )
+    scores = pd.read_csv(out_dir / "scores.csv", dtype={"node_id": str})
+    measures = pd.read_csv(out_dir / "measures.csv", dtype={"node_id": str})
     missing = [column for column in GRAPH_FEATURES if column not in measures.columns]
     if missing or any(column not in scores.columns for column in SCORE_COLUMNS):
         raise ValueError(

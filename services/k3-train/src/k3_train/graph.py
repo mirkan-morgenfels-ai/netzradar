@@ -50,7 +50,7 @@ def build_graph(nodes: pd.DataFrame, edges: pd.DataFrame) -> nx.DiGraph:
         raise ValueError(f"{len(unknown)} Kantenenden verweisen auf unbekannte Knoten")
     graph.add_edges_from(zip(edges["source"], edges["target"], strict=True))
     if nx.number_of_selfloops(graph):
-        raise ValueError("Der Graph enthaelt Selbstschleifen")
+        raise ValueError("Der Graph enthält Selbstschleifen")
     return graph
 
 
@@ -63,7 +63,7 @@ def eigenvector_with_status(
         return nx.eigenvector_centrality(graph, max_iter=max_iter, tol=tol), True
     except nx.PowerIterationFailedConvergence:
         warnings.warn(
-            f"Eigenvektor-Zentralitaet konvergiert nicht nach {max_iter} Iterationen "
+            f"Eigenvektor-Zentralität konvergiert nicht nach {max_iter} Iterationen "
             f"({graph.number_of_nodes()} Knoten); Wert 0 gesetzt",
             EigenvectorConvergenceWarning,
             stacklevel=2,

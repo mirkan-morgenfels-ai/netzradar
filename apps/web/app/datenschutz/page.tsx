@@ -28,8 +28,8 @@ export default function DatenschutzPage() {
         <p>
           Diese Seite ist ein privates, nicht-kommerzielles Projekt. Sie hat keine Eingabefelder, keine Upload-Funktion,
           keine Anmeldung und keine Kontaktformulare. Sie verwendet keine Cookies, keine Analyse- oder Tracking-Dienste und
-          keine Werbung. Die einzige Verarbeitung personenbezogener Daten findet technisch bedingt beim Hosting statt
-          (Abschnitt 4).
+          keine Werbung. Beim Besuch der Seite werden personenbezogene Daten nur technisch bedingt beim Hosting verarbeitet
+          (Abschnitt 4); schreiben Sie eine E-Mail, gilt zusätzlich Abschnitt 5.
         </p>
       </LegalSection>
 

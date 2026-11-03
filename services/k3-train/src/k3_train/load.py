@@ -82,7 +82,7 @@ def validate_nodes(nodes: pd.DataFrame) -> None:
     if unknown_labels:
         raise ValueError(f"Unbekannte Labels: {sorted(unknown_labels)}")
     if (nodes["time_step"] < 1).any():
-        raise ValueError("Zeitschritte muessen bei 1 beginnen")
+        raise ValueError("Zeitschritte müssen bei 1 beginnen")
     features = feature_columns_of(nodes)
     if not features:
         raise ValueError("Keine Merkmalsspalten f_* gefunden")
@@ -181,11 +181,10 @@ def load_elliptic(raw_dir: Path, aggregated_count: int | None = None) -> Dataset
         raw_dir / ELLIPTIC_FILES["features"],
         header=None,
         dtype={0: str},
-        float_precision="round_trip",
     )
     feature_count = features.shape[1] - 2
     if feature_count < 1:
-        raise ValueError("Die Merkmalsdatei enthaelt keine Merkmalsspalten")
+        raise ValueError("Die Merkmalsdatei enthält keine Merkmalsspalten")
     if aggregated_count is None:
         if feature_count != ELLIPTIC_FEATURE_COUNT:
             raise ValueError(
@@ -254,7 +253,6 @@ def read_processed(out_dir: Path) -> Dataset:
     nodes = pd.read_csv(
         out_dir / "nodes.csv",
         dtype={"node_id": str, "label": str},
-        float_precision="round_trip",
     )
     edges = pd.read_csv(out_dir / "edges.csv", dtype=str)
     truth_path = out_dir / "truth.csv"

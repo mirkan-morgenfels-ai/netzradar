@@ -4,14 +4,41 @@ from typing import Any
 
 import pytest
 
-from contract import validate_metrics, validate_nodes, validate_run_log
+from contract import (
+    METHODS,
+    expected_score_gnn_method,
+    validate_edges,
+    validate_metrics,
+    validate_nodes,
+    validate_run_log,
+)
 from k3_train.boosting import HgbConfig
 from k3_train.export import ExportBundle, build_exports
-from k3_train.jsonio import round_floats
+from k3_train.jsonio import read_json, round_floats
 from k3_train.load import Dataset
+from k3_train.paths import EXPORT_DIR, RUNS_DIR
 from k3_train.pipeline import BaselineOutput, run_baseline
+from k3_train.runs import latest_run_log
 
 LIGHT = HgbConfig(max_iter=25, spread_seeds=(42, 43))
+
+
+def test_checked_in_exports_pass() -> None:
+    metrics = read_json(EXPORT_DIR / "metrics.json")
+    nodes = read_json(EXPORT_DIR / "nodes.json")
+    edges = read_json(EXPORT_DIR / "edges.json")
+    assert validate_metrics(metrics) == []
+    assert validate_nodes(nodes) == []
+    assert validate_edges(edges, {node["id"] for node in nodes["nodes"]}) == []
+    assert [run["method"] for run in metrics["runs"]] == METHODS
+    assert nodes["scoreGnnMethod"] == expected_score_gnn_method(metrics)
+
+
+@pytest.mark.parametrize("method", METHODS)
+def test_latest_checked_in_run_log_passes(method: str) -> None:
+    path = latest_run_log(RUNS_DIR, "synthetic", method)
+    assert path is not None
+    assert validate_run_log(read_json(path)) == []
 
 
 @pytest.fixture(scope="module")

@@ -27,9 +27,9 @@ export default function NutzungsbedingungenPage() {
       <LegalSection title="2. Zweck: Methodenstudie">
         <p>
           NetzRadar ist ein privates Portfolio- und Lernprojekt. Es vergleicht Verfahren der Anomalie-Erkennung in
-          Transaktionsnetzwerken, eine klassische Baseline und Graph Neural Networks, auf synthetischen beziehungsweise
-          öffentlichen Forschungsdatensätzen. Alle gezeigten Ergebnisse wurden vorab berechnet. Die Seite nimmt keine
-          Eingaben entgegen und bewertet keine Daten, die Sie bereitstellen.
+          Transaktionsnetzwerken (klassische Baselines, Gradient Boosting ohne Kanten und Graph Neural Networks mit einer
+          MLP-Kontrolle) auf synthetischen beziehungsweise öffentlichen Forschungsdatensätzen. Alle gezeigten Ergebnisse
+          wurden vorab berechnet. Die Seite nimmt keine Eingaben entgegen und bewertet keine Daten, die Sie bereitstellen.
         </p>
       </LegalSection>
 

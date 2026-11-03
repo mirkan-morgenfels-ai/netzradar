@@ -7,7 +7,6 @@ import pandas as pd
 from sklearn.metrics import average_precision_score, precision_recall_curve
 
 POSITIVE_LABEL = "illicit"
-NEGATIVE_LABEL = "licit"
 EXCLUDED_LABEL = "unknown"
 TOP_SHARE = 0.02
 TARGET_LEVEL = 0.5
@@ -26,13 +25,13 @@ def _validated(y_true: Any, scores: Any) -> tuple[np.ndarray, np.ndarray]:
     y = np.asarray(y_true)
     s = np.asarray(scores, dtype=np.float64)
     if y.ndim != 1 or s.ndim != 1 or y.size != s.size:
-        raise ValueError("Labels und Scores muessen gleich lange Vektoren sein")
+        raise ValueError("Labels und Scores müssen gleich lange Vektoren sein")
     if y.size == 0:
         raise ValueError("Keine Beobachtungen")
     if not np.isin(y, (0, 1)).all():
-        raise ValueError("Labels muessen 0/1 oder bool sein")
+        raise ValueError("Labels müssen 0/1 oder bool sein")
     if not np.isfinite(s).all():
-        raise ValueError("Scores muessen endlich sein")
+        raise ValueError("Scores müssen endlich sein")
     y = y.astype(bool)
     if not y.any():
         raise ValueError("Ohne positive Beobachtung ist PR-AUC nicht definiert")

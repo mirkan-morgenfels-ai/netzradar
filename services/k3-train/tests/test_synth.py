@@ -146,7 +146,7 @@ def test_generator_parameters_include_seed_in_camel_case() -> None:
 
 
 def test_invalid_configuration_is_rejected() -> None:
-    with pytest.raises(ValueError, match="nodes_per_step"):
+    with pytest.raises(ValueError, match="nodes_per_step ist zu klein für"):
         generate(SynthConfig(nodes_per_step=10))
     with pytest.raises(ValueError, match="illicit_share"):
         generate(SynthConfig(illicit_share=1.5))
