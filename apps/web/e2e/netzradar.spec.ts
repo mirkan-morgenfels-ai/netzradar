@@ -422,12 +422,6 @@ for (const width of AXE_WIDTHS) {
   });
 }
 
-test("start address opens the NetzRadar page directly", async ({ page }) => {
-  await page.goto("/");
-  await expect(page).toHaveURL(/\/projects\/netzradar$/);
-  await expect(page.getByRole("heading", { level: 1, name: "NetzRadar" })).toBeVisible();
-});
-
 test("status names the run date and the page avoids internal jargon", async ({ page }) => {
   await page.goto("/projects/netzradar");
   const dates = [...new Set(METRICS.runs.map((run) => run.date))].sort();

@@ -25,10 +25,6 @@ export const SERIES_COLORS: readonly string[] = [
   CHART_COLORS.sand,
 ];
 
-export function seriesColor(index: number): string {
-  return SERIES_COLORS[index % SERIES_COLORS.length] ?? CHART_COLORS.navy;
-}
-
 export const SERIES_DASHES: readonly string[] = ["", "6 3", "2 3", "8 3 2 3", "1 2", "12 4", "4 2 1 2"];
 
 export const AXIS_TICK = { fill: CHART_COLORS.slate, fontSize: 12 } as const;
