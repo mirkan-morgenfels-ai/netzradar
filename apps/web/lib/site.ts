@@ -17,7 +17,19 @@ export interface NavLink {
   external: boolean;
 }
 
-export const DEFAULT_SITE_URL = "https://netzradar.vercel.app";
+export const DEFAULT_SITE_URL = "https://netzradar.mirkandeniz.de";
+
+export const LEGACY_HOSTS: readonly string[] = ["netzradar.vercel.app"];
+
+export const PROJECT_PATH = "/projects/netzradar";
+
+export const PORTFOLIO_URL = "https://mirkandeniz.de";
+
+export const PORTFOLIO_LABEL = "mirkandeniz.de";
+
+export const PORTFOLIO_PROJECTS_URL = `${PORTFOLIO_URL}/projekte`;
+
+export const PORTFOLIO_HOME_URL = `${PORTFOLIO_URL}/#start`;
 
 export const SITE_NAME = "NetzRadar";
 
@@ -26,9 +38,6 @@ export const OWNER_NAME = "Mirkan Deniz Günkaya";
 export const GITHUB_PROFILE_URL = "https://github.com/mirkan-morgenfels-ai";
 
 export const REPO_URL = "https://github.com/mirkan-morgenfels-ai/netzradar";
-
-export const HOME_DESCRIPTION =
-  "Drei Portfolio-Projekte zu Finanzdaten, maschinellem Lernen und Graph-ML: DepotDoktor, KontoKlar und NetzRadar, jeweils mit öffentlichem Quellcode auf GitHub.";
 
 export const PROJECTS: readonly Project[] = [
   {
@@ -40,7 +49,7 @@ export const PROJECTS: readonly Project[] = [
     title: "DepotDoktor",
     description:
       "Depot-Steuer- und Performance-Analyzer für Broker-CSV-Exporte. Die Auswertung läuft vollständig im Browser.",
-    href: "https://depotdoktor.vercel.app/projects/depotdoktor",
+    href: "https://depotdoktor.mirkandeniz.de/projects/depotdoktor",
     external: true,
     repo: "https://github.com/mirkan-morgenfels-ai/depotdoktor",
   },
@@ -52,7 +61,7 @@ export const PROJECTS: readonly Project[] = [
     kicker: "Projekt 02",
     title: "KontoKlar",
     description: "Kategorisiert Bankumsätze aus CSV-Exporten und zeigt, wohin das Geld geht.",
-    href: "https://kontoklar-eight.vercel.app/projects/kontoklar",
+    href: "https://kontoklar.mirkandeniz.de/projects/kontoklar",
     external: true,
     repo: "https://github.com/mirkan-morgenfels-ai/kontoklar",
   },
@@ -65,16 +74,15 @@ export const PROJECTS: readonly Project[] = [
     title: "NetzRadar",
     description:
       "Anomalie-Erkennung in Transaktionsnetzwerken: klassische Baselines und Gradient Boosting gegen Graph Neural Networks, mit zeitlichem Split und PR-AUC.",
-    href: "/projects/netzradar",
+    href: PROJECT_PATH,
     external: false,
     repo: REPO_URL,
   },
 ];
 
 export const NAV_LINKS: readonly NavLink[] = [
-  { href: "/", label: "Start", external: false },
   ...PROJECTS.map((project) => ({ href: project.href, label: project.title, external: project.external })),
-  { href: GITHUB_PROFILE_URL, label: "GitHub", external: true },
+  { href: PORTFOLIO_PROJECTS_URL, label: "Alle Projekte", external: true },
 ];
 
 export const LEGAL_LINKS: readonly NavLink[] = [
@@ -83,7 +91,7 @@ export const LEGAL_LINKS: readonly NavLink[] = [
   { href: "/nutzungsbedingungen", label: "Nutzungsbedingungen", external: false },
 ];
 
-export const SITEMAP_PATHS: readonly string[] = ["/", "/projects/netzradar", ...LEGAL_LINKS.map((link) => link.href)];
+export const SITEMAP_PATHS: readonly string[] = [PROJECT_PATH, ...LEGAL_LINKS.map((link) => link.href)];
 
 export function isActivePath(pathname: string | null, href: string): boolean {
   if (pathname === null) return false;

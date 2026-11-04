@@ -8,69 +8,61 @@ const LEGAL_PAGES = [
 const LEGAL_UPDATED = "03.11.2026";
 const REPO_BASE = "https://github.com/mirkan-morgenfels-ai";
 const NETZRADAR_REPO = `${REPO_BASE}/netzradar`;
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://netzradar.vercel.app").replace(/\/+$/, "");
-const HOME_TITLE = "Projekte · Mirkan Deniz Günkaya";
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://netzradar.mirkandeniz.de").replace(/\/+$/, "");
+const LEGACY_HOST = "netzradar.vercel.app";
+const PORTFOLIO_URL = "https://mirkandeniz.de";
+const PORTFOLIO_HOME_URL = `${PORTFOLIO_URL}/#start`;
 const PROJECT_TITLE = "NetzRadar – Anomalie-Erkennung in Transaktionsnetzwerken";
-const REFLOW_PATHS = ["/", "/projects/netzradar", ...LEGAL_PAGES.map((legal) => legal.path)];
-const HOME_HEADING = "Drei Projekte zu Finanzdaten, maschinellem Lernen und Graph-ML";
+const REFLOW_PATHS = ["/projects/netzradar", ...LEGAL_PAGES.map((legal) => legal.path)];
 
 async function metaContent(page: Page, selector: string): Promise<string | null> {
   return page.locator(selector).first().getAttribute("content");
 }
 
-test("start page lists the three projects", async ({ page }) => {
+test("start address opens NetzRadar directly", async ({ page, request }) => {
+  const response = await request.get("/", { maxRedirects: 0 });
+  expect(response.status()).toBe(308);
+  expect(response.headers()["location"]).toBe("/projects/netzradar");
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1, name: HOME_HEADING })).toBeVisible();
-  await expect(page.getByRole("heading", { level: 1, name: HOME_HEADING })).toHaveCSS("font-family", /Cormorant/);
-  await expect(page.getByRole("main").getByRole("heading", { level: 2, name: "Projekte", exact: true })).toBeVisible();
-  await expect(page.getByTestId(/^project-/)).toHaveCount(3);
-
-  for (const slug of ["depotdoktor", "kontoklar"]) {
-    const link = page.getByTestId(`project-${slug}`).getByRole("link", { name: /^Live ansehen/ });
-    await expect(link).toHaveAttribute("href", /^https:\/\//);
-    await expect(link).toHaveAttribute("rel", "noopener noreferrer");
-    await expect(link).not.toHaveAttribute("target", /.+/);
-  }
-
-  await expect(
-    page.getByTestId("project-netzradar").getByRole("link", { name: /^Live ansehen/ }),
-  ).toHaveAttribute("href", "/projects/netzradar");
-  await expect(page.getByTestId("project-netzradar")).toContainText("Diese Website");
-  for (const slug of ["depotdoktor", "kontoklar"]) {
-    await expect(page.getByTestId(`project-${slug}`)).not.toContainText("Diese Website");
-  }
-
-  for (const slug of ["depotdoktor", "kontoklar", "netzradar"]) {
-    const repo = page.getByTestId(`project-${slug}`).getByRole("link", { name: /^Quellcode/ });
-    await expect(repo).toHaveAttribute("href", new RegExp(`^${REPO_BASE}/${slug}$`));
-    await expect(repo).toHaveAttribute("rel", "noopener noreferrer");
-    await expect(repo).not.toHaveAttribute("target", /.+/);
-  }
+  await expect(page).toHaveURL(/\/projects\/netzradar$/);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveCSS("font-family", /Cormorant/);
 });
 
-test("main navigation and skip link are present", async ({ page }) => {
+test("the former Vercel address forwards to the subdomain of mirkandeniz.de", async ({ request }) => {
+  test.skip(new URL(SITE_URL).host === LEGACY_HOST, "NEXT_PUBLIC_SITE_URL zeigt noch auf die alte Adresse");
+  const project = await request.get("/projects/netzradar?quelle=alt", { headers: { host: LEGACY_HOST }, maxRedirects: 0 });
+  expect(project.status()).toBe(308);
+  expect(project.headers()["location"]).toBe(`${SITE_URL}/projects/netzradar?quelle=alt`);
+  const root = await request.get("/", { headers: { host: LEGACY_HOST }, maxRedirects: 0 });
+  expect(root.status()).toBe(308);
+  expect(root.headers()["location"]).toBe(SITE_URL);
+});
+
+test("main navigation, way back to mirkandeniz.de and skip link are present", async ({ page }) => {
   await page.goto("/projects/netzradar");
   const nav = page.getByRole("navigation", { name: "Hauptnavigation" });
   const links = nav.getByRole("list").getByRole("link");
-  await expect(links).toHaveCount(5);
-  await expect(links.nth(0)).toHaveText("Start");
-  await expect(links.nth(1)).toHaveAccessibleName("DepotDoktor (externe Seite)");
-  await expect(links.nth(2)).toHaveAccessibleName("KontoKlar (externe Seite)");
-  await expect(links.nth(3)).toHaveText("NetzRadar");
-  await expect(links.nth(4)).toHaveAccessibleName("GitHub (externe Seite)");
-  await expect(links.nth(4)).toHaveAttribute("href", REPO_BASE);
-  for (const index of [1, 2, 4]) {
-    await expect(links.nth(index)).toHaveAttribute("href", /^https:\/\//);
+  await expect(links).toHaveCount(4);
+  await expect(links.nth(0)).toHaveAccessibleName("DepotDoktor (externe Seite)");
+  await expect(links.nth(1)).toHaveAccessibleName("KontoKlar (externe Seite)");
+  await expect(links.nth(2)).toHaveText("NetzRadar");
+  await expect(links.nth(3)).toHaveAccessibleName("Alle Projekte (externe Seite)");
+  await expect(links.nth(0)).toHaveAttribute("href", "https://depotdoktor.mirkandeniz.de/projects/depotdoktor");
+  await expect(links.nth(1)).toHaveAttribute("href", "https://kontoklar.mirkandeniz.de/projects/kontoklar");
+  await expect(links.nth(3)).toHaveAttribute("href", `${PORTFOLIO_URL}/projekte`);
+  for (const index of [0, 1, 3]) {
     await expect(links.nth(index)).toHaveAttribute("rel", "noopener noreferrer");
     await expect(links.nth(index)).not.toHaveAttribute("target", /.+/);
   }
-  await expect(links.nth(3)).toHaveAttribute("aria-current", "page");
-  await expect(links.nth(0)).not.toHaveAttribute("aria-current", /.+/);
+  await expect(links.nth(2)).toHaveAttribute("aria-current", "page");
   await expect(page.locator("a.skip-link")).toHaveAttribute("href", "#main");
 
-  await page.goto("/");
-  await expect(nav.getByRole("link", { name: "Start" })).toHaveAttribute("aria-current", "page");
-  await expect(nav.getByRole("link", { name: "NetzRadar", exact: true })).not.toHaveAttribute("aria-current", /.+/);
+  const home = page.locator("header").getByTestId("portfolio-link");
+  await expect(home).toHaveAttribute("href", PORTFOLIO_HOME_URL);
+  await expect(home).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(home).not.toHaveAttribute("target", /.+/);
+  await expect(home).toHaveAccessibleName(/^Mirkan Deniz.*\(externe Seite\)$/);
+  await expect(home).toContainText("mirkandeniz.de");
 });
 
 test("focus rings are gold-light on navy and gold-deep on light surfaces", async ({ page }) => {
@@ -90,8 +82,13 @@ test("focus rings are gold-light on navy and gold-deep on light surfaces", async
   expect(await ring(onLight)).toEqual({ color: "rgb(125, 95, 23)", style: "solid", width: "2px" });
 });
 
-test("footer and project page link the public repository", async ({ page }) => {
-  await page.goto("/");
+test("footer and project page link the public repository and mirkandeniz.de", async ({ page }) => {
+  await page.goto("/projects/netzradar");
+  const portfolio = page.getByTestId("footer-portfolio-link");
+  await expect(portfolio).toHaveAttribute("href", PORTFOLIO_HOME_URL);
+  await expect(portfolio).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(portfolio).toHaveAccessibleName("mirkandeniz.de (externe Seite)");
+  await expect(page.locator("footer").getByTestId("portfolio-link")).toHaveAttribute("href", PORTFOLIO_HOME_URL);
   const footerLink = page.getByTestId("footer-repo-link");
   await expect(footerLink).toHaveAttribute("href", NETZRADAR_REPO);
   await expect(footerLink).toHaveAttribute("rel", "noopener noreferrer");
@@ -123,6 +120,9 @@ test("footer and project page link the public repository", async ({ page }) => {
   }
 
   await page.goto("/datenschutz");
+  await expect(page.getByRole("main")).toContainText("Diese Seite verlinkt auf die Website mirkandeniz.de und die Projekte DepotDoktor und KontoKlar");
+  await expect(page.getByRole("main")).toContainText("guenkaya@mirkandeniz.de");
+  await expect(page.getByRole("main")).toContainText("IONOS SE, Elgendorfer Straße 57, 56410 Montabaur");
   await expect(page.getByRole("main")).toContainText("Quellcode-Repositories bei GitHub (GitHub, Inc., USA)");
   await expect(page.getByRole("main")).not.toContainText("JSON-Dateien");
 });
@@ -132,6 +132,7 @@ for (const legal of LEGAL_PAGES) {
     await page.goto(legal.path);
     await expect(page.getByRole("heading", { level: 1, name: legal.heading })).toBeVisible();
     await expect(page.getByText(`Stand: ${LEGAL_UPDATED}`, { exact: true })).toBeVisible();
+    await expect(page.getByRole("main")).not.toContainText("gmail.com");
     await expect(page.getByRole("main")).not.toContainText("Platzhalter");
     await expect(page.getByRole("main")).not.toContainText(/[[\]]/);
   });
@@ -157,11 +158,16 @@ test("unknown paths answer 404 with a noindex title", async ({ page }) => {
   );
   expect(robots.length).toBeGreaterThan(0);
   for (const content of robots) expect(content).toContain("noindex");
+  await expect(page.getByRole("main").getByRole("link", { name: "Zu NetzRadar" })).toHaveAttribute("href", "/projects/netzradar");
+  const website = page.getByRole("main").getByRole("link", { name: "Zur Website mirkandeniz.de (externe Seite)" });
+  await expect(website).toHaveAttribute("href", PORTFOLIO_HOME_URL);
+  await expect(website).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(page.getByRole("main").getByRole("link", { name: "Zur Startseite" })).toHaveCount(0);
 });
 
 test("pages carry canonical links, link previews and distinct titles", async ({ page, request }) => {
   const titles: Record<string, string> = {};
-  for (const path of ["/", "/projects/netzradar", ...LEGAL_PAGES.map((legal) => legal.path)]) {
+  for (const path of ["/projects/netzradar", ...LEGAL_PAGES.map((legal) => legal.path)]) {
     await page.goto(path);
     titles[path] = await page.title();
     const canonical = await page.locator('link[rel="canonical"]').getAttribute("href");
@@ -181,9 +187,7 @@ test("pages carry canonical links, link previews and distinct titles", async ({ 
     expect(local.status(), path).toBe(200);
     expect(local.headers()["content-type"], path).toContain("image/png");
   }
-  expect(titles["/"]).toBe(HOME_TITLE);
   expect(titles["/projects/netzradar"]).toBe(PROJECT_TITLE);
-  expect(titles["/projects/netzradar"]).not.toBe(titles["/"]);
   expect(titles["/impressum"]).toBe("Impressum · NetzRadar");
 });
 
@@ -194,6 +198,7 @@ test("sitemap and robots.txt describe the public pages", async ({ request }) => 
   for (const path of ["/projects/netzradar", ...LEGAL_PAGES.map((legal) => legal.path)]) {
     expect(xml).toContain(`<loc>${SITE_URL}${path}</loc>`);
   }
+  expect(xml).not.toContain(`<loc>${SITE_URL}/</loc>`);
   const robots = await request.get("/robots.txt");
   expect(robots.status()).toBe(200);
   const text = await robots.text();
@@ -215,11 +220,59 @@ test("pages only send same-origin GET requests", async ({ page, baseURL }) => {
     }
   });
 
-  for (const path of ["/", ...LEGAL_PAGES.map((legal) => legal.path)]) {
+  for (const path of ["/projects/netzradar", ...LEGAL_PAGES.map((legal) => legal.path)]) {
     await page.goto(path);
     await page.waitForLoadState("load");
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   }
 
   expect(violations).toEqual([]);
+});
+
+type ClickInit = { ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean; altKey?: boolean; button?: number };
+
+test("the way back to mirkandeniz.de shows a short transition", async ({ page }) => {
+  await page.route(`${PORTFOLIO_URL}/**`, (route) =>
+    route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>Website</title><p>Website</p>" }),
+  );
+  await page.goto("/projects/netzradar");
+  await expect(page.locator("html")).toHaveAttribute("data-transition-ready", "");
+  await page.locator("header").getByTestId("portfolio-link").click();
+  const overlay = page.locator('[data-portfolio-transition="mirkandeniz.de"]');
+  await expect(overlay).toBeVisible();
+  await expect(overlay).toContainText("Zurück zur Website");
+  await expect(overlay).toContainText("Mirkan Deniz");
+  await page.waitForURL(PORTFOLIO_HOME_URL);
+  await expect(page.locator("p")).toHaveText("Website");
+});
+
+test("the transition also leads to the sister projects and leaves modifier clicks and reduced motion alone", async ({ page }) => {
+  const sister = "https://depotdoktor.mirkandeniz.de/projects/depotdoktor";
+  await page.route(`${new URL(sister).origin}/**`, (route) =>
+    route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>App</title><p>App</p>" }),
+  );
+  await page.goto("/projects/netzradar");
+  await expect(page.locator("html")).toHaveAttribute("data-transition-ready", "");
+  const link = page.getByRole("navigation", { name: "Hauptnavigation" }).locator(`a[href="${sister}"]`);
+  const prevented = (inits: ClickInit[]) =>
+    link.evaluate((element, list) => {
+      const results: boolean[] = [];
+      const record = (event: Event) => {
+        results.push(event.defaultPrevented);
+        event.preventDefault();
+      };
+      window.addEventListener("click", record);
+      for (const init of list) element.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ...init }));
+      window.removeEventListener("click", record);
+      return results;
+    }, inits);
+  expect(await prevented([{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }])).toEqual([false, false, false, false, false]);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  expect(await prevented([{}])).toEqual([false]);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await expect(page.locator("[data-portfolio-transition]")).toHaveCount(0);
+  await link.click();
+  await expect(page.locator(`[data-portfolio-transition="${new URL(sister).host}"]`)).toContainText("Weiter zum Projekt");
+  await page.waitForURL(sister);
+  await expect(page.locator("p")).toHaveText("App");
 });
