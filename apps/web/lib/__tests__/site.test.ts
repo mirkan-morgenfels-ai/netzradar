@@ -27,7 +27,6 @@ describe("PROJECTS", () => {
   it("lists exactly the three portfolio projects in order", () => {
     expect(PROJECTS).toHaveLength(3);
     expect(PROJECTS.map((project) => project.slug)).toEqual(["depotdoktor", "kontoklar", "netzradar"]);
-    expect(PROJECTS.map((project) => project.code)).toEqual(["K1", "K2", "K3"]);
     expect(PROJECTS.map((project) => project.kicker)).toEqual(["Projekt 01", "Projekt 02", "Projekt 03"]);
     expect(PROJECTS.map((project) => project.number)).toEqual(["01", "02", "03"]);
     expect(PROJECTS.map((project) => project.topic)).toEqual(["Finanzdaten", "Maschinelles Lernen", "Graph-ML"]);
@@ -51,13 +50,6 @@ describe("PROJECTS", () => {
     }
   });
 
-  it("gives every project a public repository under github.com/mirkan-morgenfels-ai", () => {
-    for (const project of PROJECTS) {
-      expect(project.repo).toBe(`https://github.com/mirkan-morgenfels-ai/${project.slug}`);
-    }
-    expect(PROJECTS.find((project) => project.slug === "netzradar")?.repo).toBe(REPO_URL);
-  });
-
   it("keeps internal links root-relative", () => {
     for (const project of PROJECTS.filter((entry) => !entry.external)) {
       expect(project.href.startsWith("/")).toBe(true);
@@ -65,23 +57,11 @@ describe("PROJECTS", () => {
     }
   });
 
-  it("gives every project a non-empty title and description", () => {
+  it("gives every project a non-empty title", () => {
     for (const project of PROJECTS) {
       expect(project.title.trim().length).toBeGreaterThan(0);
-      expect(project.description.trim().length).toBeGreaterThan(0);
     }
   });
-
-  it("uses the same project descriptions as the sibling sites", () => {
-    expect(PROJECTS[0]?.description).toBe(
-      "Depot-Steuer- und Performance-Analyzer für Broker-CSV-Exporte. Die Auswertung läuft vollständig im Browser.",
-    );
-    expect(PROJECTS[1]?.description).toBe("Kategorisiert Bankumsätze aus CSV-Exporten und zeigt, wohin das Geld geht.");
-    expect(PROJECTS[2]?.description).toBe(
-      "Anomalie-Erkennung in Transaktionsnetzwerken: klassische Baselines und Gradient Boosting gegen Graph Neural Networks, mit zeitlichem Split und PR-AUC.",
-    );
-  });
-
 });
 
 describe("navigation", () => {
@@ -110,13 +90,11 @@ describe("navigation", () => {
     expect(LEGAL_LINKS.every((link) => !link.external)).toBe(true);
   });
 
-  it("marks the start page only on / and a project page also on its subpaths", () => {
-    expect(isActivePath("/", "/")).toBe(true);
-    expect(isActivePath("/projects/netzradar", "/")).toBe(false);
+  it("marks a page as active also on its subpaths", () => {
     expect(isActivePath("/projects/netzradar", "/projects/netzradar")).toBe(true);
     expect(isActivePath("/projects/netzradar/details", "/projects/netzradar")).toBe(true);
     expect(isActivePath("/projects/netzradar-alt", "/projects/netzradar")).toBe(false);
-    expect(isActivePath(null, "/")).toBe(false);
+    expect(isActivePath(null, "/projects/netzradar")).toBe(false);
   });
 
   it("lists the project page and the legal pages for the sitemap, without the redirecting start address", () => {

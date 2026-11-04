@@ -8,5 +8,4 @@ export {
   TOOLTIP_CONTENT_STYLE,
   TOOLTIP_ITEM_STYLE,
   TOOLTIP_LABEL_STYLE,
-  seriesColor,
 } from "./theme";
