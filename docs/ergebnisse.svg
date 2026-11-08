@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 538" width="1100" height="538" role="img" aria-label="PR-AUC auf dem Testteil des synthetischen Netzes, Seed 42: GraphSAGE 0,8941, GCN 0,7897, Gradient Boosting 0,6087, MLP 0,3765, Robuste Z-Scores 0,1633, Isolation Forest 0,1281; zufällige Rangfolge 0,1181">
+<title>PR-AUC je Verfahren auf dem Testteil (Seed 42)</title>
+<rect width="1100" height="538" rx="18" fill="#0b1626"/>
+<rect x=".5" y=".5" width="1099" height="537" rx="17.5" fill="none" stroke="#c9a548" stroke-opacity=".22"/>
+<path d="M64 52H104" stroke="#c9a548" stroke-width="1.5"/>
+<text x="120" y="57" fill="#d8bd72" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15" font-weight="500" letter-spacing="3">ERGEBNIS · PR-AUC AUF DEM TESTTEIL (SEED 42)</text>
+<text x="64" y="90" fill="#8f9bb0" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="16">Synthetisches Netz, zeitlicher Split, 852 gelabelte Testknoten, davon 95 mit Label illegal</text>
+<path d="M270 122V468" stroke="#26354d" stroke-width="1"/><text x="270" y="494" text-anchor="middle" fill="#8f9bb0" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15">0,00</text><path d="M452.5 122V468" stroke="#26354d" stroke-width="1"/><text x="452.5" y="494" text-anchor="middle" fill="#8f9bb0" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15">0,25</text><path d="M635 122V468" stroke="#26354d" stroke-width="1"/><text x="635" y="494" text-anchor="middle" fill="#8f9bb0" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15">0,50</text><path d="M817.5 122V468" stroke="#26354d" stroke-width="1"/><text x="817.5" y="494" text-anchor="middle" fill="#8f9bb0" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15">0,75</text><path d="M1000 122V468" stroke="#26354d" stroke-width="1"/><text x="1000" y="494" text-anchor="middle" fill="#8f9bb0" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15">1,00</text>
+<text x="250" y="146" text-anchor="end" fill="#f7f3ea" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="19" font-weight="500">GraphSAGE</text>
+<text x="250" y="167" text-anchor="end" fill="#8f9bb0" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15">Graph Neural Network</text>
+<rect x="270" y="134" width="652.7" height="26" rx="4" fill="#c9a548" fill-opacity="1"/>
+<text x="932.7" y="154" fill="#d8bd72" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="18" font-weight="600">0,8941</text>
+<text x="250" y="202" text-anchor="end" fill="#f7f3ea" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="19" font-weight="500">GCN</text>
+<text x="250" y="223" text-anchor="end" fill="#8f9bb0" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15">Graph Neural Network</text>
+<rect x="270" y="190" width="576.5" height="26" rx="4" fill="#c9a548" fill-opacity="0.85"/>
+<text x="856.5" y="210" fill="#d8bd72" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="18" font-weight="600">0,7897</text>
+<text x="250" y="258" text-anchor="end" fill="#f7f3ea" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="19" font-weight="500">Gradient Boosting</text>
+<text x="250" y="279" text-anchor="end" fill="#8f9bb0" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15">überwacht, ohne Kanten</text>
+<rect x="270" y="246" width="444.4" height="26" rx="4" fill="#f7f3ea" fill-opacity="0.7"/>
+<text x="724.4" y="266" fill="#f7f3ea" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="18" font-weight="600">0,6087</text>
+<text x="250" y="314" text-anchor="end" fill="#f7f3ea" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="19" font-weight="500">MLP</text>
+<text x="250" y="335" text-anchor="end" fill="#8f9bb0" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15">überwacht, ohne Kanten</text>
+<rect x="270" y="302" width="274.8" height="26" rx="4" fill="#f7f3ea" fill-opacity="0.45"/>
+<text x="554.8" y="322" fill="#f7f3ea" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="18" font-weight="600">0,3765</text>
+<text x="250" y="370" text-anchor="end" fill="#f7f3ea" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="19" font-weight="500">Robuste Z-Scores</text>
+<text x="250" y="391" text-anchor="end" fill="#8f9bb0" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15">Baseline, unüberwacht</text>
+<rect x="270" y="358" width="119.2" height="26" rx="4" fill="#8f9bb0" fill-opacity="0.55"/>
+<text x="399.2" y="378" fill="#f7f3ea" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="18" font-weight="600">0,1633</text>
+<text x="250" y="426" text-anchor="end" fill="#f7f3ea" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="19" font-weight="500">Isolation Forest</text>
+<text x="250" y="447" text-anchor="end" fill="#8f9bb0" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15">Baseline, unüberwacht</text>
+<rect x="270" y="414" width="93.5" height="26" rx="4" fill="#8f9bb0" fill-opacity="0.55"/>
+<text x="373.5" y="434" fill="#f7f3ea" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="18" font-weight="600">0,1281</text>
+<path d="M356.2 122V468" stroke="#f7f3ea" stroke-opacity=".75" stroke-width="2" stroke-dasharray="5 5"/>
+<text x="364.2" y="116" fill="#f7f3ea" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="15">zufällige Rangfolge 0,1181</text>
+</svg>
