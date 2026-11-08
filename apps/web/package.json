@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "readme:chart": "node scripts/readme-chart.mjs"
   },
   "dependencies": {
     "@portfolio/charts": "workspace:*",
